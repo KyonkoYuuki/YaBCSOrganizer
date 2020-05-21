@@ -70,7 +70,7 @@ class MainWindow(wx.Frame):
         pub.subscribe(self.reindex_part_sets, 'reindex_part_sets')
         pub.subscribe(self.reindex_part_colors, 'reindex_part_colors')
         pub.subscribe(self.reindex_bodies, 'reindex_bodies')
-        pub.subscribe(self.reindex_skeleton, 'reindex_skeleton')
+        pub.subscribe(self.reindex_skeletons, 'reindex_skeletons')
 
         # Events.
         self.Bind(wx.EVT_MENU, self.open_bcs, id=wx.ID_OPEN)
@@ -133,9 +133,7 @@ class MainWindow(wx.Frame):
         # Lists
         self.part_sets_list = self.main_panel.pages["Part Sets"].entry_list
         self.part_colors_list = self.main_panel.pages["Part Colors"].entry_list
-        self.body_list = self.main_panel.pages["Body"].entry_list
-        self.skeleton_list = self.main_panel.pages["Skeleton"].entry_list
-
+        self.body_list = self.main_panel.pages["Bodies"].entry_list
         color_db.image_list = wx.ImageList(16, 16)
         self.part_sets_list.SetImageList(color_db.image_list)
         self.part_colors_list.SetImageList(color_db.image_list)
@@ -390,7 +388,7 @@ class MainWindow(wx.Frame):
                 bone_scale_index += 1
             item = self.get_next_item(self.body_list, item)
 
-    def reindex_skeleton(self, selected=None):
+    def reindex_skeletons(self, selected=None):
         item = self.skeleton_list.GetRootItem()
         skeleton_index = 0
         bone_index = 0

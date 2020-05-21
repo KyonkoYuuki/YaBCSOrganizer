@@ -14,8 +14,8 @@ class MainPanel(wx.Panel):
         page_names = [
             'Part Sets',
             'Part Colors',
-            'Body',
-            'Skeleton',
+            'Bodies',
+            'Skeletons',
         ]
         self.pages = {}
 
@@ -44,6 +44,10 @@ class MainPanel(wx.Panel):
 
     def on_page_changed(self, _):
         page = self.notebook.GetCurrentPage()
+        page_name = self.notebook.GetPageText(self.notebook.GetSelection())
+        page_name = page_name.replace(' ', '_').lower()
+        pub.sendMessage(f"reindex_{page_name}")
+
         page.on_select(None)
 
     # def add_entry(self, parent, previous):

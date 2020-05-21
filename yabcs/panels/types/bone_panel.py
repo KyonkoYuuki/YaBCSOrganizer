@@ -33,4 +33,4 @@ class BonePanel(BasePanel):
 
     def reindex(self, changed):
         if 'name' in changed:
-            pub.sendMessage("reindex_skeleton")
+            pub.sendMessage("reindex_skeletons")
