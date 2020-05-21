@@ -26,31 +26,12 @@ class MainPanel(wx.Panel):
 
         self.Bind(wx.EVT_NOTEBOOK_PAGE_CHANGED, self.on_page_changed, self.notebook)
 
-        # self.entry_list = TreeListCtrl(self)
-        # self.entry_list.AppendColumn("Entry")
-        # self.entry_list.Bind(EVT_TREELIST_ITEM_CONTEXT_MENU, self.on_right_click)
-        # self.entry_list.Bind(EVT_TREELIST_SELECTION_CHANGED, self.on_select)
-        # self.cdo = wx.CustomDataObject("BCSEntry")
-
-        self.append_id = wx.NewId()
-        self.insert_id = wx.NewId()
         # self.Bind(wx.EVT_MENU, self.on_delete, id=wx.ID_DELETE)
         # self.Bind(wx.EVT_MENU, self.on_copy, id=wx.ID_COPY)
         # self.Bind(wx.EVT_MENU, self.on_paste, id=wx.ID_PASTE)
         # self.Bind(wx.EVT_MENU, self.on_add_child, id=wx.ID_ADD)
         # self.Bind(wx.EVT_MENU, self.on_append, id=self.append_id)
         # self.Bind(wx.EVT_MENU, self.on_insert, id=self.insert_id)
-        accelerator_table = wx.AcceleratorTable([
-            (wx.ACCEL_CTRL, ord('a'), self.append_id),
-            (wx.ACCEL_CTRL, ord('i'), self.insert_id),
-            (wx.ACCEL_CTRL, ord('n'), wx.ID_ADD),
-            (wx.ACCEL_CTRL, ord('c'), wx.ID_COPY),
-            (wx.ACCEL_CTRL, ord('v'), wx.ID_PASTE),
-            (wx.ACCEL_NORMAL, wx.WXK_DELETE, wx.ID_DELETE),
-        ])
-        # self.entry_list.SetAcceleratorTable(accelerator_table)
-
-        # pub.subscribe(self.on_select, 'on_select')
 
         # Use some sizers to see layout options
         sizer = wx.BoxSizer()
@@ -65,37 +46,6 @@ class MainPanel(wx.Panel):
         page = self.notebook.GetCurrentPage()
         page.on_select(None)
 
-    # def on_right_click(self, _):
-    #     selection = self.entry_list.GetSelection()
-    #     if not selection:
-    #         return
-    #     menu = wx.Menu()
-    #     copy = menu.Append(wx.ID_COPY, "&Copy\tCtrl+C", "Copy entry")
-    #     paste = menu.Append(wx.ID_PASTE, "&Paste\tCtrl+V", "Paste entry")
-    #     delete = menu.Append(wx.ID_DELETE, "&Delete\tDelete", "Delete entry(s)")
-    #     append = menu.Append(self.append_id, "&Append\tCtrl+A", "Append entry after")
-    #     insert = menu.Append(self.insert_id, "&Insert\tCtrl+I", "Insert entry before")
-    #     menu.Append(wx.ID_ADD, "Add &New Child\tCtrl+N", "Add child entry")
-    #
-    #     enabled = selection != self.entry_list.GetFirstItem()
-    #     copy.Enable(enabled)
-    #     success = False
-    #     if enabled and wx.TheClipboard.Open():
-    #         success = wx.TheClipboard.IsSupported(wx.DataFormat("BCSEntry"))
-    #         wx.TheClipboard.Close()
-    #     paste.Enable(success)
-    #     delete.Enable(enabled)
-    #     append.Enable(enabled)
-    #     insert.Enable(enabled)
-    #     self.PopupMenu(menu)
-    #     menu.Destroy()
-    #
-    # def on_select(self, _):
-    #     item = self.entry_list.GetSelection()
-    #     if not item:
-    #         return
-    #     pub.sendMessage('load_entry', entry=self.entry_list.GetItemData(item))
-    #
     # def add_entry(self, parent, previous):
     #     success = False
     #     cdo = wx.CustomDataObject("BCSEntry")

@@ -1,3 +1,5 @@
+from pubsub import pub
+
 from yabcs.panels.types import BasePanel
 
 
@@ -28,3 +30,7 @@ class BonePanel(BasePanel):
         self.controls['u_2a'] = self.add_hex_entry(self.unknown_page, 'U_2A', max=self.MAX_UINT16)
         self.controls['u_2c'] = self.add_hex_entry(self.unknown_page, 'U_2C', max=self.MAX_UINT16)
         self.controls['u_2e'] = self.add_hex_entry(self.unknown_page, 'U_2E', max=self.MAX_UINT16)
+
+    def save_entry(self, _):
+        super().save_entry(_)
+        pub.sendMessage("reindex_skeleton")

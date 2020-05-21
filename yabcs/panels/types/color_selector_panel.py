@@ -1,3 +1,4 @@
+from pubsub import pub
 import wx
 import wx.adv
 
@@ -52,7 +53,7 @@ class ColorSelectorPanel(BasePanel):
             self.fill_color_combo_box()
             if self.entry.color > len(color_db[self.current_part_color]) or self.entry.color == -1:
                 self.entry.color = 0
-        print(self.entry.color)
+            pub.sendMessage("reindex_part_sets")
         self.controls['color'].SetSelection(self.entry.color)
 
     def fill_color_combo_box(self):

@@ -9,7 +9,16 @@ from wx.lib.dialogs import ScrolledMessageDialog
 from wx.lib.agw.hyperlink import HyperLinkCtrl
 
 from pyxenoverse.bcs import BCS
-from pyxenoverse.bcs.part_set import BCS_PART_LIST
+from pyxenoverse.bcs.part_set import PartSet, BCS_PART_LIST
+from pyxenoverse.bcs.part import Part
+from pyxenoverse.bcs.color_selector import ColorSelector
+from pyxenoverse.bcs.physics import Physics
+from pyxenoverse.bcs.body import Body
+from pyxenoverse.bcs.part_color import PartColor
+from pyxenoverse.bcs.color import Color
+from pyxenoverse.bcs.bone_scale import BoneScale
+from pyxenoverse.bcs.skeleton import Skeleton
+from pyxenoverse.bcs.bone import Bone
 from yabcs.colordb import color_db
 from yabcs.panels.main import MainPanel
 from yabcs.panels.side import SidePanel
@@ -58,6 +67,10 @@ class MainWindow(wx.Frame):
         pub.subscribe(self.load_bcs, 'load_bcs')
         pub.subscribe(self.save_bcs, 'save_bcs')
         pub.subscribe(self.set_status_bar, 'set_status_bar')
+        pub.subscribe(self.reindex_part_sets, 'reindex_part_sets')
+        pub.subscribe(self.reindex_part_colors, 'reindex_part_colors')
+        pub.subscribe(self.reindex_bodies, 'reindex_bodies')
+        pub.subscribe(self.reindex_skeleton, 'reindex_skeleton')
 
         # Events.
         self.Bind(wx.EVT_MENU, self.open_bcs, id=wx.ID_OPEN)
@@ -188,11 +201,11 @@ class MainWindow(wx.Frame):
             self.load_parts(part_set_entry, part_set)
 
     def load_parts(self, root, part_set):
-        for part_name in BCS_PART_LIST:
+        for i, part_name in enumerate(BCS_PART_LIST):
             if not part_set or part_name not in part_set.parts:
                 continue
             part = part_set.parts[part_name]
-            part_entry = self.part_sets_list.AppendItem(root, part_name.replace('_', ' ').title(), data=part)
+            part_entry = self.part_sets_list.AppendItem(root, f"{i}: {part_name.replace('_', ' ').title()}", data=part)
             self.load_color_selector(part_entry, part)
             self.load_physics(part_entry, part)
 
@@ -217,7 +230,7 @@ class MainWindow(wx.Frame):
         for i, part_color in enumerate(self.bcs.part_colors):
             color_set = []
             color_set_entry = self.part_colors_list.AppendItem(
-                self.part_colors_list.GetRootItem(), f"Part Color {i}", data=part_color)
+                self.part_colors_list.GetRootItem(), f"{i}: {part_color.name}", data=part_color)
             self.load_colors(color_set_entry, part_color, color_set)
             color_db.append(color_set)
 
@@ -226,7 +239,8 @@ class MainWindow(wx.Frame):
             return
         for i, color in enumerate(part_color.colors):
             self.part_colors_list.AppendItem(root, f"{i}", data=color)
-            color_set.append(wx.Bitmap.FromRGBA(16, 16, *color.color1[:3], 255))
+            # For some reason, the eye_ part color only uses Color4
+            color_set.append(wx.Bitmap.FromRGBA(16, 16, *color.color4[:3], 255))
 
     def load_bodies(self):
         self.body_list.DeleteAllItems()
@@ -274,6 +288,73 @@ class MainWindow(wx.Frame):
             saved.ShowModal()
             saved.Destroy()
         dlg.Destroy()
+
+    def reindex_part_sets(self, selected=None):
+        item = self.part_sets_list.GetFirstItem()
+        part_set_index = 0
+        color_selector_index = 0
+        physics_index = 0
+        while item.IsOk():
+            data = self.part_sets_list.GetItemData(item)
+            if isinstance(data, PartSet):
+                self.part_sets_list.SetItemText(item, f"Part Set {part_set_index}")
+                part_set_index += 1
+            elif isinstance(data, Part):
+                color_selector_index = 0
+                physics_index = 0
+            elif isinstance(data, ColorSelector):
+                name = self.bcs.part_colors[data.part_colors].name
+                self.part_sets_list.SetItemText(item, f"{color_selector_index}: {name}")
+                color_selector_index += 1
+            elif isinstance(data, Physics):
+                self.part_sets_list.SetItemText(item, f"{physics_index}")
+                physics_index += 1
+            item = self.part_sets_list.GetNextItem(item)
+
+    def reindex_part_colors(self, selected=None):
+        item = self.part_colors_list.GetFirstItem()
+        part_color_index = 0
+        color_index = 0
+        while item.IsOk():
+            data = self.part_colors_list.GetItemData(item)
+            if isinstance(data, PartColor):
+                self.part_colors_list.SetItemText(item, f"{part_color_index}: {data.name}")
+                part_color_index += 1
+                color_index = 0
+            elif isinstance(data, Color):
+                self.part_colors_list.SetItemText(item, f"{color_index}")
+                color_index += 1
+            item = self.part_colors_list.GetNextItem(item)
+
+    def reindex_bodies(self, selected=None):
+        body_index = 0
+        bone_scale_index = 0
+        item = self.body_list.GetFirstItem()
+        while item.IsOk():
+            data = self.body_list.GetItemData(item)
+            if isinstance(data, Body):
+                self.body_list.SetItemText(item, f"Body {body_index}")
+                body_index += 1
+                bone_scale_index = 0
+            elif isinstance(data, BoneScale):
+                self.body_list.SetItemText(item, f"{bone_scale_index}: {data.name}")
+                bone_scale_index += 1
+            item = self.body_list.GetNextItem(item)
+
+    def reindex_skeleton(self, selected=None):
+        item = self.skeleton_list.GetFirstItem()
+        skeleton_index = 0
+        bone_index = 0
+        while item.IsOk():
+            data = self.skeleton_list.GetItemData(item)
+            if isinstance(data, Skeleton):
+                self.skeleton_list.SetItemText(item, f"Skeleton {skeleton_index}")
+                skeleton_index += 1
+                bone_index = 0
+            elif isinstance(data, Bone):
+                self.skeleton_list.SetItemText(item, f"{bone_index}: {data.name}")
+                bone_index += 1
+            item = self.skeleton_list.GetNextItem(item)
 
     # def on_find(self, _):
     #     if not self.replace.IsShown():
