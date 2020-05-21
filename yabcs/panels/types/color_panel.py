@@ -1,5 +1,6 @@
+from pubsub import pub
+
 from yabcs.panels.types import BasePanel
-import wx
 
 
 class ColorPanel(BasePanel):
@@ -15,3 +16,7 @@ class ColorPanel(BasePanel):
         self.controls['f_44'] = self.add_float_entry(self.unknown_page, 'F_44')
         self.controls['f_48'] = self.add_float_entry(self.unknown_page, 'F_48')
         self.controls['f_4c'] = self.add_float_entry(self.unknown_page, 'F_4C')
+
+    def reindex(self, changed):
+        if 'color1' in changed or 'color4' in changed:
+            pub.sendMessage("reindex_part_colors")

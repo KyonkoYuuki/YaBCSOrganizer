@@ -1,7 +1,20 @@
+from collections import defaultdict
 import wx
 
 from pubsub import pub
-from wx.dataview import TreeListCtrl, EVT_TREELIST_SELECTION_CHANGED, EVT_TREELIST_ITEM_CONTEXT_MENU
+from wx.dataview import TreeListCtrl, TL_MULTIPLE, EVT_TREELIST_SELECTION_CHANGED, EVT_TREELIST_ITEM_CONTEXT_MENU
+
+
+from pyxenoverse.bcs.part_set import PartSet, BCS_PART_LIST
+from pyxenoverse.bcs.part import Part
+from pyxenoverse.bcs.color_selector import ColorSelector
+from pyxenoverse.bcs.physics import Physics
+from pyxenoverse.bcs.body import Body
+from pyxenoverse.bcs.part_color import PartColor
+from pyxenoverse.bcs.color import Color
+from pyxenoverse.bcs.bone_scale import BoneScale
+from pyxenoverse.bcs.skeleton import Skeleton
+from pyxenoverse.bcs.bone import Bone
 
 
 class ListPanel(wx.Panel):
@@ -9,12 +22,12 @@ class ListPanel(wx.Panel):
         wx.Panel.__init__(self, parent)
         self.parent = parent
 
-        self.append_id = wx.NewId()
-        self.insert_id = wx.NewId()
-        self.entry_list = TreeListCtrl(self)
-        self.entry_list.AppendColumn("Entry")
-        self.entry_list.Bind(EVT_TREELIST_ITEM_CONTEXT_MENU, self.on_right_click)
-        self.entry_list.Bind(EVT_TREELIST_SELECTION_CHANGED, self.on_select)
+        self.add_ids = defaultdict(lambda: wx.NewId())
+        self.insert_ids = defaultdict(lambda: wx.NewId())
+        self.append_ids = defaultdict(lambda: wx.NewId())
+        self.entry_list = wx.TreeCtrl(self, style=wx.TR_MULTIPLE | wx.TR_HAS_BUTTONS | wx.TR_FULL_ROW_HIGHLIGHT | wx.TR_LINES_AT_ROOT | wx.TR_HIDE_ROOT)
+        self.entry_list.Bind(wx.EVT_TREE_ITEM_MENU, self.on_right_click)
+        self.entry_list.Bind(wx.EVT_TREE_SEL_CHANGED, self.on_select)
         self.cdo = wx.CustomDataObject("BCSEntry")
 
         accelerator_table = wx.AcceleratorTable([
@@ -33,6 +46,8 @@ class ListPanel(wx.Panel):
         self.SetAutoLayout(1)
 
     def on_select(self, _):
+        if not self.entry_list:
+            return
         selected = self.entry_list.GetSelections()
         if len(selected) != 1:
             pub.sendMessage('hide_panels')
@@ -40,21 +55,55 @@ class ListPanel(wx.Panel):
         entry = self.entry_list.GetItemData(selected[0])
         pub.sendMessage('load_entry', item=selected[0], entry=entry)
 
-    def add_single_selection_items(self, menu):
-        selections = self.entry_list.GetSelections()
-        item = self.entry_list.GetItemData(selections[0])
-        if item:
-            item_type = str(item).split('(')[0]
-        else:
-            item_type = 'BCS' + self.entry_list.GetItemText(selections[0]).replace(' ', '')
-        item_name = item_type[3:]
+    def add_menu_items(self, menu, name):
+        menu.Append(self.add_ids[name], f"Add {name}", f"Add {name} at the end")
+        menu.Append(self.append_ids[name], f"Append {name}", f"Append {name} after")
+        menu.Append(self.insert_ids[name], f"Insert {name}", f"Insert {name} before")
 
-        enabled = item != None
-        menu.Append(wx.ID_ADD, f"&Add {item_name}\tCtrl+A", f"Add {item_name} at the end")
-        append = menu.Append(self.append_id, f"Append {item_name}", f"Append {item_name} after")
-        append.Enable(enabled)
-        insert = menu.Append(self.insert_id, f"Insert {item_name}", f"Insert {item_name} before")
-        insert.Enable(enabled)
+    def add_part_items(self, menu, part_set):
+        sub_menu = wx.Menu()
+        for part in BCS_PART_LIST:
+            name = part.replace('_', ' ').title()
+            add_part = sub_menu.Append(self.add_ids[name], f"Add {name} part", f"Add {name}")
+            add_part.Enable(part not in part_set.parts)
+        menu.AppendSubMenu(sub_menu, "Parts")
+
+    def add_single_selection_items(self, menu, selected):
+        data = self.entry_list.GetItemData(selected)
+        if isinstance(data, PartSet):
+            self.add_menu_items(menu, "Part Set")
+            menu.AppendSeparator()
+            self.add_part_items(menu, data)
+        elif isinstance(data, Part):
+            part_set_item = self.entry_list.GetItemParent(selected)
+            part_set = self.entry_list.GetItemData(part_set_item)
+            self.add_part_items(menu, part_set)
+            menu.AppendSeparator()
+            self.add_menu_items(menu, "Color Selector")
+            menu.AppendSeparator()
+            self.add_menu_items(menu, "Physics")
+        elif isinstance(data, ColorSelector):
+            self.add_menu_items(menu, "Color Selector")
+        elif isinstance(data, Physics):
+            self.add_menu_items(menu, "Physics")
+        elif isinstance(data, PartColor):
+            self.add_menu_items(menu, "Part Color")
+            menu.AppendSeparator()
+            self.add_menu_items(menu, "Color")
+        elif isinstance(data, Color):
+            self.add_menu_items(menu, "Color")
+        elif isinstance(data, Body):
+            self.add_menu_items(menu, "Body")
+            menu.AppendSeparator()
+            self.add_menu_items(menu, "Bone Scale")
+        elif isinstance(data, BoneScale):
+            self.add_menu_items(menu, "Bone Scale")
+        elif isinstance(data, Skeleton):
+            self.add_menu_items(menu, "Skeleton")
+            menu.AppendSeparator()
+            self.add_menu_items(menu, "Bone")
+        elif isinstance(data, Bone):
+            self.add_menu_items(menu, "Bone")
 
     def on_right_click(self, _):
         selections = self.entry_list.GetSelections()
@@ -62,7 +111,7 @@ class ListPanel(wx.Panel):
             return
         menu = wx.Menu()
         if len(selections) == 1:
-            self.add_single_selection_items(menu)
+            self.add_single_selection_items(menu, selections[0])
 
         # copy = menu.Append(wx.ID_COPY, "&Copy\tCtrl+C", "Copy entry")
         # paste = menu.Append(wx.ID_PASTE, "&Paste\tCtrl+V", "Paste entry")

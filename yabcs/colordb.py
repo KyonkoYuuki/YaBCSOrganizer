@@ -1,3 +1,10 @@
 from collections import defaultdict
+import wx
 
-color_db = []
+
+class ColorDb(list):
+    bcs = None
+    image_list = None
+
+
+color_db = ColorDb()

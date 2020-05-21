@@ -31,6 +31,6 @@ class BonePanel(BasePanel):
         self.controls['u_2c'] = self.add_hex_entry(self.unknown_page, 'U_2C', max=self.MAX_UINT16)
         self.controls['u_2e'] = self.add_hex_entry(self.unknown_page, 'U_2E', max=self.MAX_UINT16)
 
-    def save_entry(self, _):
-        super().save_entry(_)
-        pub.sendMessage("reindex_skeleton")
+    def reindex(self, changed):
+        if 'name' in changed:
+            pub.sendMessage("reindex_skeleton")

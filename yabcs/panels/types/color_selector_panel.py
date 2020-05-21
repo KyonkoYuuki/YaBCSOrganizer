@@ -34,7 +34,8 @@ class ColorSelectorPanel(BasePanel):
         self.entry = entry
         # Populate comboboxes first
         self.controls['part_colors'].Clear()
-        self.controls['part_colors'].AppendItems(list(map(lambda x: str(x), range(len(color_db)))))
+        self.controls['part_colors'].AppendItems(
+            [f'{i}: {part_color.name}' for i, part_color in enumerate(color_db.bcs.part_colors)])
 
         self.fill_color_combo_box()
 
@@ -42,7 +43,8 @@ class ColorSelectorPanel(BasePanel):
         self.controls['part_colors'].SetSelection(self.entry.part_colors)
         self.controls['color'].SetSelection(self.entry.color)
 
-    def save_entry(self, e):
+    def save_entry(self, _):
+        self.edit_thread = None
         if self.entry is None:
             return
 
@@ -53,14 +55,17 @@ class ColorSelectorPanel(BasePanel):
             self.fill_color_combo_box()
             if self.entry.color > len(color_db[self.current_part_color]) or self.entry.color == -1:
                 self.entry.color = 0
-            pub.sendMessage("reindex_part_sets")
         self.controls['color'].SetSelection(self.entry.color)
+        self.reindex(None)
+
+    def reindex(self, changed):
+        pub.sendMessage("reindex_part_sets")
 
     def fill_color_combo_box(self):
         self.controls['color'].Clear()
         self.current_part_color = self.entry.part_colors
-        for i, bitmap in enumerate(color_db[self.current_part_color]):
-            self.controls['color'].Append(str(i), bitmap)
+        for i, image in enumerate(color_db[self.current_part_color]):
+            self.controls['color'].Append(str(i), color_db.image_list.GetBitmap(image))
 
     def skip_evt_text(self, _):
         pass

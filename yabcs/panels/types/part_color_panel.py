@@ -9,7 +9,6 @@ class PartColorPanel(BasePanel):
 
         self.controls['name'] = self.add_text_entry(self.entry_page, 'Name')
 
-    def save_entry(self, _):
-        super().save_entry(_)
+    def reindex(self, changed):
         pub.sendMessage('reindex_part_colors')
 

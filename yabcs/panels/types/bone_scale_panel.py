@@ -12,7 +12,7 @@ class BoneScalePanel(BasePanel):
         self.controls['y'] = self.add_float_entry(self.entry_page, 'Y Scale')
         self.controls['z'] = self.add_float_entry(self.entry_page, 'Z Scale')
 
-    def save_entry(self, _):
-        super().save_entry(_)
-        pub.sendMessage('reindex_bodies')
+    def reindex(self, changed):
+        if 'name' in changed:
+            pub.sendMessage('reindex_bodies')
 

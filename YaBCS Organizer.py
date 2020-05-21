@@ -131,11 +131,14 @@ class MainWindow(wx.Frame):
         self.SetAutoLayout(1)
 
         # Lists
-        # self.entry_list = self.main_panel.entry_list
         self.part_sets_list = self.main_panel.pages["Part Sets"].entry_list
         self.part_colors_list = self.main_panel.pages["Part Colors"].entry_list
         self.body_list = self.main_panel.pages["Body"].entry_list
         self.skeleton_list = self.main_panel.pages["Skeleton"].entry_list
+
+        color_db.image_list = wx.ImageList(16, 16)
+        self.part_sets_list.SetImageList(color_db.image_list)
+        self.part_colors_list.SetImageList(color_db.image_list)
 
         # Dialogs
         # self.find = FindDialog(self, self.entry_list, -1)
@@ -152,6 +155,23 @@ class MainWindow(wx.Frame):
         dlg.ShowModal()
         dlg.Destroy()
 
+    def get_parent(self, list_ctrl, item):
+        parent = list_ctrl.GetItemParent(item)
+        if parent == list_ctrl.GetRootItem():
+            return None
+        next_item = list_ctrl.GetNextSibling(parent)
+        if not next_item.IsOk():
+            next_item = self.get_parent(list_ctrl, parent)
+        return next_item
+
+    def get_next_item(self, list_ctrl, item):
+        next_item = list_ctrl.GetFirstChild(item)[0]
+        if not next_item.IsOk():
+            next_item = list_ctrl.GetNextSibling(item)
+        if not next_item.IsOk():
+            next_item = self.get_parent(list_ctrl, item)
+        return next_item
+
     def on_about(self, _):
         # Create a message dialog box
         dlg = wx.MessageDialog(self, f"Yet Another BCS Organizer v{VERSION} by Kyonko Yuuki",
@@ -160,6 +180,7 @@ class MainWindow(wx.Frame):
         dlg.Destroy()  # finally destroy it when finished.
 
     def on_exit(self, _):
+        self.Disable()
         self.Close(True)  # Close the frame.
 
     def set_status_bar(self, text):
@@ -181,11 +202,11 @@ class MainWindow(wx.Frame):
             dlg.ShowModal()
             dlg.Destroy()
             return
-        self.bcs = new_bcs
+        self.bcs = color_db.bcs = new_bcs
         pub.sendMessage('hide_panels')
 
+        self.load_part_colors()  # Need to load this first
         self.load_part_set()
-        self.load_part_colors()
         self.load_bodies()
         self.load_skeleton()
 
@@ -195,6 +216,7 @@ class MainWindow(wx.Frame):
 
     def load_part_set(self):
         self.part_sets_list.DeleteAllItems()
+        self.part_sets_list.AddRoot("Parts")
         for i, part_set in enumerate(self.bcs.part_sets):
             part_set_entry = self.part_sets_list.AppendItem(
                 self.part_sets_list.GetRootItem(), f"Part Set {i}", data=part_set)
@@ -215,7 +237,10 @@ class MainWindow(wx.Frame):
         color_selector_entry = self.part_sets_list.AppendItem(root, "Color Selector")
         for i, color_selector in enumerate(part.color_selectors):
             name = self.bcs.part_colors[color_selector.part_colors].name
-            self.part_sets_list.AppendItem(color_selector_entry, f"{i}: {name}", data=color_selector)
+            item = self.part_sets_list.AppendItem(
+                color_selector_entry, f"{i}: {name}, {color_selector.color}", data=color_selector)
+            image = color_db[color_selector.part_colors][color_selector.color]
+            self.part_sets_list.SetItemImage(item, image)
 
     def load_physics(self, root, part):
         if not part.physics:
@@ -226,7 +251,9 @@ class MainWindow(wx.Frame):
 
     def load_part_colors(self):
         self.part_colors_list.DeleteAllItems()
+        self.part_colors_list.AddRoot("Part Colors")
         color_db.clear()
+        color_db.image_list.RemoveAll()
         for i, part_color in enumerate(self.bcs.part_colors):
             color_set = []
             color_set_entry = self.part_colors_list.AppendItem(
@@ -238,12 +265,19 @@ class MainWindow(wx.Frame):
         if not part_color:
             return
         for i, color in enumerate(part_color.colors):
-            self.part_colors_list.AppendItem(root, f"{i}", data=color)
-            # For some reason, the eye_ part color only uses Color4
-            color_set.append(wx.Bitmap.FromRGBA(16, 16, *color.color4[:3], 255))
+            # Hack, as eye_ uses Color4
+            if part_color.name == "eye_":
+                bitmap = wx.Bitmap.FromRGBA(16, 16, *color.color4[:3], 255)
+            else:
+                bitmap = wx.Bitmap.FromRGBA(16, 16, *color.color1[:3], 255)
+            image = color_db.image_list.Add(bitmap)
+            color_set.append(image)
+            color_item = self.part_colors_list.AppendItem(root, f"{i}", data=color)
+            self.part_colors_list.SetItemImage(color_item, image)
 
     def load_bodies(self):
         self.body_list.DeleteAllItems()
+        self.body_list.AddRoot("Bodies")
         for i, body in enumerate(self.bcs.bodies):
             body_entry = self.body_list.AppendItem(
                 self.body_list.GetRootItem(), f"Body {i}", data=body)
@@ -257,6 +291,7 @@ class MainWindow(wx.Frame):
 
     def load_skeleton(self):
         self.skeleton_list.DeleteAllItems()
+        self.skeleton_list.AddRoot("Skeleton")
         for i, skeleton in enumerate(self.bcs.skeletons):
             skeleton_entry = self.skeleton_list.AppendItem(
                 self.skeleton_list.GetRootItem(), f"Skeleton {i}", data=skeleton)
@@ -290,11 +325,11 @@ class MainWindow(wx.Frame):
         dlg.Destroy()
 
     def reindex_part_sets(self, selected=None):
-        item = self.part_sets_list.GetFirstItem()
+        item = self.part_sets_list.GetRootItem()
         part_set_index = 0
         color_selector_index = 0
         physics_index = 0
-        while item.IsOk():
+        while item:
             data = self.part_sets_list.GetItemData(item)
             if isinstance(data, PartSet):
                 self.part_sets_list.SetItemText(item, f"Part Set {part_set_index}")
@@ -304,33 +339,47 @@ class MainWindow(wx.Frame):
                 physics_index = 0
             elif isinstance(data, ColorSelector):
                 name = self.bcs.part_colors[data.part_colors].name
-                self.part_sets_list.SetItemText(item, f"{color_selector_index}: {name}")
+                try:
+                    image = color_db[data.part_colors][data.color]
+                    self.part_sets_list.SetItemText(item, f"{color_selector_index}: {name}, {data.color}")
+                    self.part_sets_list.SetItemImage(item, image)
+                except IndexError:
+                    self.part_sets_list.SetItemText(item, f"{color_selector_index}: NULL, -1")
+                    self.part_sets_list.SetItemImage(item, -1)
                 color_selector_index += 1
             elif isinstance(data, Physics):
                 self.part_sets_list.SetItemText(item, f"{physics_index}")
                 physics_index += 1
-            item = self.part_sets_list.GetNextItem(item)
+            item = self.get_next_item(self.part_sets_list, item)
 
     def reindex_part_colors(self, selected=None):
-        item = self.part_colors_list.GetFirstItem()
+        item = self.part_colors_list.GetRootItem()
+        part_color_name = ''
         part_color_index = 0
         color_index = 0
-        while item.IsOk():
+        while item:
             data = self.part_colors_list.GetItemData(item)
             if isinstance(data, PartColor):
                 self.part_colors_list.SetItemText(item, f"{part_color_index}: {data.name}")
+                part_color_name = data.name
                 part_color_index += 1
                 color_index = 0
             elif isinstance(data, Color):
+                image_index = color_db[part_color_index-1][color_index]
+                if part_color_name == 'eye_':
+                    bitmap = wx.Bitmap.FromRGBA(16, 16, *data.color4[:3], 255)
+                else:
+                    bitmap = wx.Bitmap.FromRGBA(16, 16, *data.color1[:3], 255)
+                color_db.image_list.Replace(image_index, bitmap)
                 self.part_colors_list.SetItemText(item, f"{color_index}")
                 color_index += 1
-            item = self.part_colors_list.GetNextItem(item)
+            item = self.get_next_item(self.part_colors_list, item)
 
     def reindex_bodies(self, selected=None):
         body_index = 0
         bone_scale_index = 0
-        item = self.body_list.GetFirstItem()
-        while item.IsOk():
+        item = self.body_list.GetRootItem()
+        while item:
             data = self.body_list.GetItemData(item)
             if isinstance(data, Body):
                 self.body_list.SetItemText(item, f"Body {body_index}")
@@ -339,13 +388,13 @@ class MainWindow(wx.Frame):
             elif isinstance(data, BoneScale):
                 self.body_list.SetItemText(item, f"{bone_scale_index}: {data.name}")
                 bone_scale_index += 1
-            item = self.body_list.GetNextItem(item)
+            item = self.get_next_item(self.body_list, item)
 
     def reindex_skeleton(self, selected=None):
-        item = self.skeleton_list.GetFirstItem()
+        item = self.skeleton_list.GetRootItem()
         skeleton_index = 0
         bone_index = 0
-        while item.IsOk():
+        while item:
             data = self.skeleton_list.GetItemData(item)
             if isinstance(data, Skeleton):
                 self.skeleton_list.SetItemText(item, f"Skeleton {skeleton_index}")
@@ -354,7 +403,7 @@ class MainWindow(wx.Frame):
             elif isinstance(data, Bone):
                 self.skeleton_list.SetItemText(item, f"{bone_index}: {data.name}")
                 bone_index += 1
-            item = self.skeleton_list.GetNextItem(item)
+            item = self.get_next_item(self.skeleton_list, item)
 
     # def on_find(self, _):
     #     if not self.replace.IsShown():

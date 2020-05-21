@@ -1,6 +1,8 @@
 import wx
 import wx.adv
 from pubsub import pub
+from threading import Thread
+import time
 from wx.lib.scrolledpanel import ScrolledPanel
 
 from pyxenoverse.gui import add_entry
@@ -10,6 +12,37 @@ from pyxenoverse.gui.ctrl.multiple_selection_box import MultipleSelectionBox
 from pyxenoverse.gui.ctrl.single_selection_box import SingleSelectionBox
 from pyxenoverse.gui.ctrl.text_ctrl import TextCtrl
 from pyxenoverse.gui.ctrl.unknown_hex_ctrl import UnknownHexCtrl
+
+
+EVT_RESULT_ID = wx.NewId()
+
+
+def EVT_RESULT(win, func):
+    win.Connect(-1, -1, EVT_RESULT_ID, func)
+
+
+class ResultEvent(wx.PyEvent):
+    def __init__(self):
+        wx.PyEvent.__init__(self)
+        self.SetEventType(EVT_RESULT_ID)
+
+
+class EditThread(Thread):
+    def __init__(self, panel):
+        Thread.__init__(self)
+        self.count = 0
+        self.panel = panel
+        self.start()
+
+    def run(self):
+        while self.count < 0.5:
+            time.sleep(0.1)
+            self.count += 0.1
+
+        wx.PostEvent(self.panel, ResultEvent())
+
+    def new_sig(self):
+        self.count = 0
 
 
 class Page(ScrolledPanel):
@@ -31,6 +64,7 @@ class BasePanel(wx.Panel):
         self.root = root
         self.item = None
         self.entry = None
+        self.edit_thread = None
         self.controls = {}
         self.saved_values = {}
         self.item_type = item_type
@@ -45,12 +79,13 @@ class BasePanel(wx.Panel):
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(self.notebook, 1, wx.ALL | wx.EXPAND, 10)
 
-        self.Bind(wx.EVT_TEXT, self.save_entry)
+        self.Bind(wx.EVT_TEXT, self.on_edit)
         self.Bind(wx.EVT_COMBOBOX, self.save_entry)
         self.Bind(wx.EVT_CHECKBOX, self.save_entry)
         self.Bind(wx.EVT_RADIOBOX, self.save_entry)
         self.Bind(wx.EVT_SLIDER, self.save_entry)
         self.Bind(wx.EVT_COLOURPICKER_CHANGED, self.save_entry)
+        EVT_RESULT(self, self.save_entry)
 
         pub.subscribe(self.focus_on, 'focus_on')
 
@@ -101,6 +136,12 @@ class BasePanel(wx.Panel):
         control = self.add_float_entry(panel, None, *args, **kwargs)
         return label, control
 
+    def on_edit(self, _):
+        if not self.edit_thread:
+            self.edit_thread = EditThread(self)
+        else:
+            self.edit_thread.new_sig()
+
     def hide_entry(self, name):
         try:
             label = self.__getattribute__(name + '_label')
@@ -132,18 +173,27 @@ class BasePanel(wx.Panel):
             control.SetValue(getattr(entry, name))
 
     def save_entry(self, _):
+        self.edit_thread = None
         if self.entry is None:
             return
+        changed = []
         for name, control in self.controls.items():
             # SpinCtrlDoubles suck
+            old_value = getattr(self.entry, name)
             if isinstance(control, wx.SpinCtrlDouble):
                 try:
+                    new_value = float(control.Children[0].GetValue())
                     setattr(self.entry, name, float(control.Children[0].GetValue()))
                 except ValueError:
-                    # Keep old value if its mistyped
+                    new_value = old_value
                     pass
             else:
-                setattr(self.entry, name, control.GetValue())
+                new_value = control.GetValue()
+            if old_value != new_value:
+                changed.append(name)
+                setattr(self.entry, name, new_value)
+        if changed:
+            self.reindex(changed)
 
     def focus_on(self, entry):
         if not self.IsShown():
@@ -151,3 +201,6 @@ class BasePanel(wx.Panel):
         page = self.notebook.FindPage(self.controls[entry].GetParent())
         self.controls[entry].SetFocus()
         self.notebook.ChangeSelection(page)
+
+    def reindex(self, changed):
+        pass
