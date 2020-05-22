@@ -79,12 +79,57 @@ class ListPanel(wx.Panel):
 
         # Part Colors only
         if isinstance(new_type, PartColor):
-            print("Are we adding?")
             color_db.insert(index, [])
 
         # Reindex
         pub.sendMessage(f"reindex_{name}")
         return new_item, new_type
+
+    def add_part(self, _, part_name, entry=None):
+        if not entry:
+            entry = self.entry_list.GetSelections()[0]
+        data = self.entry_list.GetItemData(entry)
+        if not isinstance(data, PartSet) and not isinstance(data, Part):
+            return
+        if part_name not in BCS_PART_LIST:
+            return
+
+        if isinstance(data, PartSet):
+            part_set_item = entry
+        else:
+            part_set_item = self.entry_list.GetItemParent(entry)
+
+        part_set = self.entry_list.GetItemData(part_set_item)
+        new_name = color_db.name
+        part_item, cookie = self.entry_list.GetFirstChild(part_set_item)
+        if part_item.IsOk():
+            first_part = self.entry_list.GetItemData(part_item)
+            new_name = first_part.name
+
+        if part_name in part_set.parts:
+            return
+
+        # Add new part
+        new_part = Part()
+        new_part.name = new_name
+        part_set.parts[part_name] = new_part
+
+        # Insert into Tree List
+        index = BCS_PART_LIST.index(part_name)
+        name = part_name.replace('_', ' ').capitalize()
+        tree_index = 0
+        while part_item.IsOk():
+            text = self.entry_list.GetItemText(part_item)
+            next_index = int(text.split(':')[0])
+            if index < next_index:
+                break
+            part_item, cookie = self.entry_list.GetNextChild(part_set_item, cookie)
+            tree_index += 1
+        new_item = self.entry_list.InsertItem(part_set_item, tree_index, f"{index}: {name}", data=new_part)
+
+        # Reindex
+        pub.sendMessage("reindex_part_sets")
+        return new_item, new_part
 
     def add_color(self, _, append, entry=None):
         self.add_sub_items(_, append, entry, PartColor, "part_colors", Color, "colors")
@@ -233,6 +278,7 @@ class ListPanel(wx.Panel):
             name = part.replace('_', ' ').title()
             add_part = sub_menu.Append(self.add_ids[name], f"Add {name} part", f"Add {name}")
             add_part.Enable(part not in part_set.parts)
+            self.Bind(wx.EVT_MENU, partial(self.add_part, part_name=part), add_part)
         menu.AppendSubMenu(sub_menu, "Parts")
 
     def add_single_selection_items(self, menu, selected):

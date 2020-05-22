@@ -3,6 +3,7 @@ import wx
 
 
 class ColorDb(list):
+    name = ''
     bcs = None
     image_list = None
 

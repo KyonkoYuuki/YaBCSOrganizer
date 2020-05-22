@@ -203,6 +203,7 @@ class MainWindow(wx.Frame):
             dlg.Destroy()
             return
         self.bcs = color_db.bcs = new_bcs
+        color_db.name = filename[:3]
         pub.sendMessage('hide_panels')
 
         self.load_part_colors()  # Need to load this first
@@ -325,7 +326,9 @@ class MainWindow(wx.Frame):
         dlg.Destroy()
 
     def reindex_part_sets(self, selected=None):
-        if not self.bcs or self.bcs.part_sets:
+        if not self.bcs:
+            return
+        if not self.bcs.part_sets:
             return
         item = self.part_sets_list.GetRootItem()
         part_set_index = 0
@@ -355,7 +358,9 @@ class MainWindow(wx.Frame):
             item = self.get_next_item(self.part_sets_list, item)
 
     def reindex_part_colors(self, selected=None):
-        if not self.bcs or self.bcs.part_colors:
+        if not self.bcs:
+            return
+        if not self.bcs.part_colors:
             return
         item = self.part_colors_list.GetRootItem()
         part_color_name = ''
@@ -380,7 +385,9 @@ class MainWindow(wx.Frame):
             item = self.get_next_item(self.part_colors_list, item)
 
     def reindex_bodies(self, selected=None):
-        if not self.bcs or self.bcs.bodies:
+        if not self.bcs:
+            return
+        if not self.bcs.bodies:
             return
         body_index = 0
         bone_scale_index = 0
@@ -397,7 +404,9 @@ class MainWindow(wx.Frame):
             item = self.get_next_item(self.body_list, item)
 
     def reindex_skeletons(self, selected=None):
-        if not self.bcs or not self.bcs.skeletons:
+        if not self.bcs:
+            return
+        if not self.bcs.skeletons:
             return
         item = self.skeleton_list.GetRootItem()
         skeleton_index = 0
