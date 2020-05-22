@@ -20,7 +20,7 @@ class MainPanel(wx.Panel):
         self.pages = {}
 
         for idx, name in enumerate(page_names):
-            page = ListPanel(self.notebook)
+            page = ListPanel(self.notebook, name)
             self.notebook.AddPage(page, name)
             self.pages[name] = page
 
@@ -45,8 +45,14 @@ class MainPanel(wx.Panel):
     def on_page_changed(self, _):
         page = self.notebook.GetCurrentPage()
         page_name = self.notebook.GetPageText(self.notebook.GetSelection())
-        page_name = page_name.replace(' ', '_').lower()
-        pub.sendMessage(f"reindex_{page_name}")
+        name = page_name.replace(' ', '_').lower()
+        pub.sendMessage(f"reindex_{name}")
+
+        item_type = page_name[:-1]
+        if item_type.endswith('ie'):
+            item_type = f'{item_type[:-2]}y'
+
+        pub.sendMessage("change_add_text", text=item_type)
 
         page.on_select(None)
 

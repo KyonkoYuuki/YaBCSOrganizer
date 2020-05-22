@@ -71,6 +71,7 @@ class MainWindow(wx.Frame):
         pub.subscribe(self.reindex_part_colors, 'reindex_part_colors')
         pub.subscribe(self.reindex_bodies, 'reindex_bodies')
         pub.subscribe(self.reindex_skeletons, 'reindex_skeletons')
+        pub.subscribe(self.change_add_text, 'change_add_text')
 
         # Events.
         self.Bind(wx.EVT_MENU, self.open_bcs, id=wx.ID_OPEN)
@@ -103,8 +104,13 @@ class MainWindow(wx.Frame):
         open_button = wx.Button(self, wx.ID_OPEN, "Load")
         open_button.Bind(wx.EVT_BUTTON, self.open_bcs)
 
-        save_button = wx.Button(self, wx.ID_SAVE, "Save")
-        save_button.Bind(wx.EVT_BUTTON, self.save_bcs)
+        self.save_button = wx.Button(self, wx.ID_SAVE, "Save")
+        self.save_button.Disable()
+        self.save_button.Bind(wx.EVT_BUTTON, self.save_bcs)
+
+        self.add_button = wx.Button(self, wx.ID_ADD, "Add Part Set", size=(100, -1))
+        self.add_button.Disable()
+        self.add_button.Bind(wx.EVT_BUTTON, self.on_add)
 
         hyperlink = HyperLinkCtrl(self, -1, "What do all these things mean?",
                                   URL="https://docs.google.com/document/d/"
@@ -113,9 +119,9 @@ class MainWindow(wx.Frame):
         # Sizer
         sizer = wx.BoxSizer(wx.VERTICAL)
         button_sizer = wx.BoxSizer()
-        button_sizer.Add(open_button)
-        button_sizer.AddSpacer(10)
-        button_sizer.Add(save_button)
+        button_sizer.Add(open_button, 0, wx.LEFT, 10)
+        button_sizer.Add(self.save_button, 0, wx.LEFT, 10)
+        button_sizer.Add(self.add_button, 0, wx.LEFT, 10)
         button_sizer.Add(hyperlink, 0, wx.ALL, 10)
 
         panel_sizer = wx.BoxSizer()
@@ -131,14 +137,14 @@ class MainWindow(wx.Frame):
         self.SetAutoLayout(1)
 
         # Lists
-        self.part_sets_list = self.main_panel.pages["Part Sets"].entry_list
-        self.part_colors_list = self.main_panel.pages["Part Colors"].entry_list
+        self.part_set_list = self.main_panel.pages["Part Sets"].entry_list
+        self.part_color_list = self.main_panel.pages["Part Colors"].entry_list
         self.body_list = self.main_panel.pages["Bodies"].entry_list
         self.skeleton_list = self.main_panel.pages["Skeletons"].entry_list
 
         color_db.image_list = wx.ImageList(16, 16)
-        self.part_sets_list.SetImageList(color_db.image_list)
-        self.part_colors_list.SetImageList(color_db.image_list)
+        self.part_set_list.SetImageList(color_db.image_list)
+        self.part_color_list.SetImageList(color_db.image_list)
 
         # Dialogs
         # self.find = FindDialog(self, self.entry_list, -1)
@@ -186,7 +192,7 @@ class MainWindow(wx.Frame):
     def set_status_bar(self, text):
         self.statusbar.SetStatusText(text)
 
-    def open_bcs(self, _):
+    def open_bcs(self, e):
         dlg = wx.FileDialog(self, "Choose a file", self.dirname, "", "*.bcs", wx.FD_OPEN)
         if dlg.ShowModal() == wx.ID_OK:
             self.load_bcs(dlg.GetDirectory(), dlg.GetFilename())
@@ -204,6 +210,8 @@ class MainWindow(wx.Frame):
             return
         self.bcs = color_db.bcs = new_bcs
         color_db.name = filename[:3]
+        self.add_button.Enable()
+        self.save_button.Enable()
         pub.sendMessage('hide_panels')
 
         self.load_part_colors()  # Need to load this first
@@ -216,11 +224,11 @@ class MainWindow(wx.Frame):
         self.statusbar.SetStatusText(f"Loaded {path}")
 
     def load_part_set(self):
-        self.part_sets_list.DeleteAllItems()
-        self.part_sets_list.AddRoot("Parts")
+        self.part_set_list.DeleteAllItems()
+        self.part_set_list.AddRoot("Parts")
         for i, part_set in enumerate(self.bcs.part_sets):
-            part_set_entry = self.part_sets_list.AppendItem(
-                self.part_sets_list.GetRootItem(), f"{i}: Part Set", data=part_set)
+            part_set_entry = self.part_set_list.AppendItem(
+                self.part_set_list.GetRootItem(), f"{i}: Part Set", data=part_set)
             self.load_parts(part_set_entry, part_set)
 
     def load_parts(self, root, part_set):
@@ -228,37 +236,37 @@ class MainWindow(wx.Frame):
             if not part_set or part_name not in part_set.parts:
                 continue
             part = part_set.parts[part_name]
-            part_entry = self.part_sets_list.AppendItem(root, f"{i}: {part_name.replace('_', ' ').title()}", data=part)
+            part_entry = self.part_set_list.AppendItem(root, f"{i}: {part_name.replace('_', ' ').title()}", data=part)
             self.load_color_selector(part_entry, part)
             self.load_physics(part_entry, part)
 
     def load_color_selector(self, root, part):
         if not part.color_selectors:
             return
-        color_selector_entry = self.part_sets_list.AppendItem(root, "Color Selectors")
+        color_selector_entry = self.part_set_list.AppendItem(root, "Color Selectors")
         for i, color_selector in enumerate(part.color_selectors):
             name = self.bcs.part_colors[color_selector.part_colors].name
-            item = self.part_sets_list.AppendItem(
+            item = self.part_set_list.AppendItem(
                 color_selector_entry, f"{i}: {name}, {color_selector.color}", data=color_selector)
             image = color_db[color_selector.part_colors][color_selector.color]
-            self.part_sets_list.SetItemImage(item, image)
+            self.part_set_list.SetItemImage(item, image)
 
     def load_physics(self, root, part):
         if not part.physics:
             return
-        physics_entry = self.part_sets_list.AppendItem(root, "Physics")
+        physics_entry = self.part_set_list.AppendItem(root, "Physics")
         for i, physics in enumerate(part.physics):
-            self.part_sets_list.AppendItem(physics_entry, f"{i}", data=physics)
+            self.part_set_list.AppendItem(physics_entry, f"{i}", data=physics)
 
     def load_part_colors(self):
-        self.part_colors_list.DeleteAllItems()
-        self.part_colors_list.AddRoot("Part Colors")
+        self.part_color_list.DeleteAllItems()
+        self.part_color_list.AddRoot("Part Colors")
         color_db.clear()
         color_db.image_list.RemoveAll()
         for i, part_color in enumerate(self.bcs.part_colors):
             color_set = []
-            color_set_entry = self.part_colors_list.AppendItem(
-                self.part_colors_list.GetRootItem(), f"{i}: {part_color.name}", data=part_color)
+            color_set_entry = self.part_color_list.AppendItem(
+                self.part_color_list.GetRootItem(), f"{i}: {part_color.name}", data=part_color)
             self.load_colors(color_set_entry, part_color, color_set)
             color_db.append(color_set)
 
@@ -273,8 +281,8 @@ class MainWindow(wx.Frame):
                 bitmap = wx.Bitmap.FromRGBA(16, 16, *color.color1[:3], 255)
             image = color_db.image_list.Add(bitmap)
             color_set.append(image)
-            color_item = self.part_colors_list.AppendItem(root, f"{i}", data=color)
-            self.part_colors_list.SetItemImage(color_item, image)
+            color_item = self.part_color_list.AppendItem(root, f"{i}", data=color)
+            self.part_color_list.SetItemImage(color_item, image)
 
     def load_bodies(self):
         self.body_list.DeleteAllItems()
@@ -304,7 +312,7 @@ class MainWindow(wx.Frame):
         for i, bone in enumerate(skeleton.bones):
             self.skeleton_list.AppendItem(root, f"{i}: {bone.name}", data=bone)
 
-    def save_bcs(self, _):
+    def save_bcs(self, e):
         if not self.bcs:
             dlg = wx.MessageDialog(self, " No BCS Loaded", "Warning", wx.OK)
             dlg.ShowModal()  # Shows it
@@ -330,14 +338,15 @@ class MainWindow(wx.Frame):
             return
         if not self.bcs.part_sets:
             return
-        item = self.part_sets_list.GetRootItem()
+        item = root = self.part_set_list.GetRootItem()
         part_set_index = 0
         color_selector_index = 0
         physics_index = 0
         while item:
-            data = self.part_sets_list.GetItemData(item)
+            data = self.part_set_list.GetItemData(item)
+            num_children = self.part_set_list.GetChildrenCount(item)
             if isinstance(data, PartSet):
-                self.part_sets_list.SetItemText(item, f"{part_set_index}: Part Set")
+                self.part_set_list.SetItemText(item, f"{part_set_index}: Part Set")
                 part_set_index += 1
             elif isinstance(data, Part):
                 color_selector_index = 0
@@ -346,30 +355,33 @@ class MainWindow(wx.Frame):
                 name = self.bcs.part_colors[data.part_colors].name
                 try:
                     image = color_db[data.part_colors][data.color]
-                    self.part_sets_list.SetItemText(item, f"{color_selector_index}: {name}, {data.color}")
-                    self.part_sets_list.SetItemImage(item, image)
+                    self.part_set_list.SetItemText(item, f"{color_selector_index}: {name}, {data.color}")
+                    self.part_set_list.SetItemImage(item, image)
                 except IndexError:
-                    self.part_sets_list.SetItemText(item, f"{color_selector_index}: NULL, -1")
-                    self.part_sets_list.SetItemImage(item, -1)
+                    self.part_set_list.SetItemText(item, f"{color_selector_index}: NULL, -1")
+                    self.part_set_list.SetItemImage(item, -1)
                 color_selector_index += 1
             elif isinstance(data, Physics):
-                self.part_sets_list.SetItemText(item, f"{physics_index}")
+                self.part_set_list.SetItemText(item, f"{physics_index}")
                 physics_index += 1
-            item = self.get_next_item(self.part_sets_list, item)
+            elif item != root and num_children == 0:
+                self.part_set_list.Delete(item)
+
+            item = self.get_next_item(self.part_set_list, item)
 
     def reindex_part_colors(self, selected=None):
         if not self.bcs:
             return
         if not self.bcs.part_colors:
             return
-        item = self.part_colors_list.GetRootItem()
+        item = self.part_color_list.GetRootItem()
         part_color_name = ''
         part_color_index = 0
         color_index = 0
         while item:
-            data = self.part_colors_list.GetItemData(item)
+            data = self.part_color_list.GetItemData(item)
             if isinstance(data, PartColor):
-                self.part_colors_list.SetItemText(item, f"{part_color_index}: {data.name}")
+                self.part_color_list.SetItemText(item, f"{part_color_index}: {data.name}")
                 part_color_name = data.name
                 part_color_index += 1
                 color_index = 0
@@ -380,9 +392,9 @@ class MainWindow(wx.Frame):
                 else:
                     bitmap = wx.Bitmap.FromRGBA(16, 16, *data.color1[:3], 255)
                 color_db.image_list.Replace(image_index, bitmap)
-                self.part_colors_list.SetItemText(item, f"{color_index}")
+                self.part_color_list.SetItemText(item, f"{color_index}")
                 color_index += 1
-            item = self.get_next_item(self.part_colors_list, item)
+            item = self.get_next_item(self.part_color_list, item)
 
     def reindex_bodies(self, selected=None):
         if not self.bcs:
@@ -421,6 +433,21 @@ class MainWindow(wx.Frame):
                 self.skeleton_list.SetItemText(item, f"{bone_index}: {data.name}")
                 bone_index += 1
             item = self.get_next_item(self.skeleton_list, item)
+
+    def on_add(self, _):
+        text = self.add_button.GetLabelText()
+        if text.endswith('y'):
+            page_name = f'{text[4:-1]}ies'
+        else:
+            page_name = f'{text[4:]}s'
+
+        page = self.main_panel.pages[page_name]
+        item_type = text[4:].replace(' ', '_').lower()
+        add_item_func = getattr(page, f'add_{item_type}')
+        add_item_func(None, add_at_end=True)
+
+    def change_add_text(self, text):
+        self.add_button.SetLabelText(f"Add {text}")
 
     # def on_find(self, _):
     #     if not self.replace.IsShown():

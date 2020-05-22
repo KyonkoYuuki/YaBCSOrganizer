@@ -1,6 +1,7 @@
 from collections import defaultdict
 from functools import partial
 import wx
+from wx.lib.dialogs import MultiMessageDialog
 
 from pubsub import pub
 
@@ -14,14 +15,21 @@ from pyxenoverse.bcs.color import Color
 from pyxenoverse.bcs.bone_scale import BoneScale
 from pyxenoverse.bcs.skeleton import Skeleton
 from pyxenoverse.bcs.bone import Bone
+from pyxenoverse.gui.file_drop_target import FileDropTarget
+from pyxenoverse.gui.ctrl.multiple_selection_box import MultipleSelectionBox
+from pyxenoverse.gui.ctrl.single_selection_box import SingleSelectionBox
+from pyxenoverse.gui.ctrl.unknown_hex_ctrl import UnknownHexCtrl
 
 from yabcs.colordb import color_db
 
 
 class ListPanel(wx.Panel):
-    def __init__(self, parent):
+    def __init__(self, parent, name):
         wx.Panel.__init__(self, parent)
         self.parent = parent
+        self.focus = None
+        self.name = name
+        self.reindex_name = f"reindex_{name.replace(' ', '_').lower()}"
 
         self.add_ids = defaultdict(lambda: wx.NewId())
         self.insert_ids = defaultdict(lambda: wx.NewId())
@@ -29,7 +37,12 @@ class ListPanel(wx.Panel):
         self.entry_list = wx.TreeCtrl(self, style=wx.TR_MULTIPLE | wx.TR_HAS_BUTTONS | wx.TR_FULL_ROW_HIGHLIGHT | wx.TR_LINES_AT_ROOT | wx.TR_HIDE_ROOT)
         self.entry_list.Bind(wx.EVT_TREE_ITEM_MENU, self.on_right_click)
         self.entry_list.Bind(wx.EVT_TREE_SEL_CHANGED, self.on_select)
+        self.entry_list.SetDropTarget(FileDropTarget(self, "load_bcs"))
         self.cdo = wx.CustomDataObject("BCSEntry")
+
+        self.Bind(wx.EVT_MENU, self.on_open, id=wx.ID_OPEN)
+        self.Bind(wx.EVT_MENU, self.on_save, id=wx.ID_SAVE)
+        self.Bind(wx.EVT_MENU, self.on_delete, id=wx.ID_DELETE)
 
         accelerator_table = wx.AcceleratorTable([
             (wx.ACCEL_CTRL, ord('c'), wx.ID_COPY),
@@ -42,33 +55,149 @@ class ListPanel(wx.Panel):
         sizer.Add(self.entry_list, 1, wx.ALL | wx.EXPAND)
 
         pub.subscribe(self.on_select, 'on_select')
+        pub.subscribe(self.set_focus, 'set_focus')
+        pub.subscribe(self.clear_focus, 'clear_focus')
 
         self.SetSizer(sizer)
         self.SetAutoLayout(1)
 
-    def add_part_set(self, _, append, entry=None):
-        self.add_item(_, append, entry, PartSet, "part_sets")
+    def on_open(self, _):
+        pub.sendMessage('open_bcs', e=None)
 
-    def add_part_color(self, _, append, entry=None):
-        self.add_item(_, append, entry, PartColor, "part_colors")
+    def on_save(self, _):
+        pub.sendMessage('save_bcs', e=None)
 
-    def add_body(self, _, append, entry=None):
-        self.add_item(_, append, entry, Body, "bodies")
-
-    def add_skeleton(self, _, append, entry=None):
-        self.add_item(_, append, entry, Skeleton, "skeletons")
-
-    def add_item(self, _, append, entry, item_type, name):
-        if not entry:
-            entry = self.entry_list.GetSelections()[0]
-        text = self.entry_list.GetItemText(entry)
-        data = self.entry_list.GetItemData(entry)
-        parent = self.entry_list.GetRootItem()
-        if not isinstance(data, item_type):
+    def on_delete(self, _):
+        selected = self.entry_list.GetSelections()
+        if not selected:
             return
-        index = int(text.split(':')[0])
-        if append:
-            index += 1
+        root = self.entry_list.GetRootItem()
+
+        # Only delete root nodes
+        items_to_delete = []
+        for item in selected:
+            parent = self.entry_list.GetItemParent(item)
+            while parent != root and parent.IsOk():
+                if parent in selected:
+                    break
+                parent = self.entry_list.GetItemParent(parent)
+            if parent == root:
+                items_to_delete.append(item)
+
+        for item in reversed(items_to_delete):
+            data = self.entry_list.GetItemData(item)
+            text = self.entry_list.GetItemText(item)
+            parent = self.entry_list.GetItemParent(item)
+            parent_data = self.entry_list.GetItemData(parent)
+            index = -1
+            # Get Index
+            if data:
+                index = int(text.split(':')[0])
+
+            # Delete from BCS
+            if not data and text == "Physics":
+                parent_data.physics.clear()
+            elif not data and text == "Color Selectors":
+                parent_data.color_selectors.clear()
+            elif isinstance(data, PartSet):
+                color_db.bcs.part_sets.pop(index)
+            elif isinstance(data, ColorSelector):
+                part_set_item = self.entry_list.GetItemParent(parent)
+                part_set = self.entry_list.GetItemData(part_set_item)
+                part_set.color_selectors.pop(index)
+            elif isinstance(data, Physics):
+                part_set_item = self.entry_list.GetItemParent(parent)
+                part_set = self.entry_list.GetItemData(part_set_item)
+                part_set.physics.pop(index)
+            elif isinstance(data, PartColor):
+                conflicts = self.check_color_conflicts(index)
+                if conflicts:
+                    msg = "\n".join([f"* Part Set {c[0]}, {c[1]}\n" for c in conflicts])
+                    with MultiMessageDialog(self, "Cannot delete Part Color.  The following parts are still using it:",
+                                            "Warning", msg, wx.OK) as dlg:
+                        dlg.ShowModal()
+                    return
+                color_db.bcs.part_colors.pop(index)
+                color_db.pop(index)
+                self.delete_colors(index)
+            elif isinstance(data, Color):
+                parent_text = self.entry_list.GetItemText(parent)
+                parent_index = int(parent_text.split(':')[0])
+                conflicts = self.check_color_conflicts(parent_index, index)
+                if conflicts:
+                    msg = "\n".join([f"* Part Set {c[0]}, {c[1]}" for c in conflicts])
+                    with MultiMessageDialog(self, "Cannot delete Part Color.  The following parts are still using it:",
+                                            "Warning", msg, wx.OK) as dlg:
+                        dlg.ShowModal()
+                    return
+                parent_data.colors.pop(index)
+                color_db[parent_index].pop(index)
+                self.delete_colors(parent_index, index)
+            elif isinstance(data, Body):
+                color_db.bcs.bodies.pop(index)
+            elif isinstance(data, BoneScale):
+                parent_data.bone_scales.pop(index)
+            elif isinstance(data, Skeleton):
+                color_db.bcs.skeletons.pop(index)
+            elif isinstance(data, Bone):
+                parent_data.bones.pop(index)
+
+            # Finally Delete from Tree
+            self.entry_list.Delete(item)
+
+            pub.sendMessage(self.reindex_name)
+            pub.sendMessage('set_status_bar', text="Deleted successfully")
+
+    def check_color_conflicts(self, part_color_index, color_index=-1):
+        conflicts = []
+        for ps_idx, part_set in enumerate(color_db.bcs.part_sets):
+            for part_name, part in part_set.parts.items():
+                for cs_idx, color_selector in enumerate(part.color_selectors):
+                    if color_selector.part_colors == part_color_index and \
+                            (color_index == -1 or color_selector.color == color_index):
+                        conflicts.append((ps_idx, part_name))
+        return conflicts
+
+    def delete_colors(self, part_color_index, color_index=-1):
+        for ps_idx, part_set in enumerate(color_db.bcs.part_sets):
+            for part_name, part in part_set.parts.items():
+                for cs_idx, color_selector in enumerate(part.color_selectors):
+                    # Shift just part colors
+                    if color_index == -1:
+                        if color_selector.part_colors >= part_color_index:
+                            color_selector.part_colors -= 1
+                    # Shift colors
+                    else:
+                        if color_selector.part_colors == part_color_index and color_selector.color >= color_index:
+                            color_selector.color -= 1
+
+    def add_part_set(self, _, append=True, entry=None, add_at_end=False):
+        self.add_item(append, entry, PartSet, "part_sets", add_at_end)
+
+    def add_part_color(self, _, append=True, entry=None, add_at_end=False):
+        self.add_item(append, entry, PartColor, "part_colors", add_at_end)
+
+    def add_body(self, _, append=True, entry=None, add_at_end=False):
+        self.add_item(append, entry, Body, "bodies", add_at_end)
+
+    def add_skeleton(self, _, append=True, entry=None, add_at_end=False):
+        self.add_item(append, entry, Skeleton, "skeletons", add_at_end)
+
+    def add_item(self, append, entry, item_type, name, add_at_end):
+        if not add_at_end:
+            if not entry:
+                entry = self.entry_list.GetSelections()[0]
+            text = self.entry_list.GetItemText(entry)
+            data = self.entry_list.GetItemData(entry)
+            parent = self.entry_list.GetRootItem()
+            if not isinstance(data, item_type):
+                return
+            index = int(text.split(':')[0])
+            if append:
+                index += 1
+        else:
+            parent = self.entry_list.GetRootItem()
+            index = len(getattr(color_db.bcs, name))
 
         # Add Part Set
         new_type = item_type()
@@ -82,7 +211,7 @@ class ListPanel(wx.Panel):
             color_db.insert(index, [])
 
         # Reindex
-        pub.sendMessage(f"reindex_{name}")
+        pub.sendMessage(self.reindex_name)
         return new_item, new_type
 
     def add_part(self, _, part_name, entry=None):
@@ -132,15 +261,15 @@ class ListPanel(wx.Panel):
         return new_item, new_part
 
     def add_color(self, _, append, entry=None):
-        self.add_sub_items(_, append, entry, PartColor, "part_colors", Color, "colors")
+        self.add_sub_items(append, entry, PartColor, "part_colors", Color, "colors")
 
     def add_bone_scale(self, _, append, entry=None):
-        self.add_sub_items(_, append, entry, Body, "bodies", BoneScale, "bone_scales")
+        self.add_sub_items(append, entry, Body, "bodies", BoneScale, "bone_scales")
 
     def add_bone(self, _, append, entry=None):
-        self.add_sub_items(_, append, entry, Skeleton, "skeletons", Bone, "bones")
+        self.add_sub_items(append, entry, Skeleton, "skeletons", Bone, "bones")
 
-    def add_sub_items(self, _, append, entry, parent_type, parent_name, item_type, name):
+    def add_sub_items(self, append, entry, parent_type, parent_name, item_type, name):
         if not entry:
             entry = self.entry_list.GetSelections()[0]
         text = self.entry_list.GetItemText(entry)
@@ -183,16 +312,16 @@ class ListPanel(wx.Panel):
             self.entry_list.SetItemImage(new_item, image)
 
         # Reindex
-        pub.sendMessage(f"reindex_{parent_name}")
+        pub.sendMessage(self.reindex_name)
         return new_item, new_type
 
     def add_color_selector(self, _, append, entry=None):
-        self.add_parts_item(_, append, entry, ColorSelector, "Color Selectors")
+        self.add_parts_item(append, entry, ColorSelector, "Color Selectors")
 
     def add_physics(self, _, append, entry=None):
-        self.add_parts_item(_, append, entry, Physics, "Physics")
+        self.add_parts_item(append, entry, Physics, "Physics")
 
-    def add_parts_item(self, _, append, entry, item_type, label):
+    def add_parts_item(self, append, entry, item_type, label):
         if not entry:
             entry = self.entry_list.GetSelections()[0]
         text = self.entry_list.GetItemText(entry)
@@ -248,7 +377,7 @@ class ListPanel(wx.Panel):
         new_item = self.entry_list.InsertItem(item_list, index, "", data=new_type)
 
         # Reindex
-        pub.sendMessage(f"reindex_part_sets")
+        pub.sendMessage("reindex_part_sets")
         return new_item, new_type
 
     def on_select(self, _):
@@ -345,3 +474,14 @@ class ListPanel(wx.Panel):
         # insert.Enable(enabled)
         self.PopupMenu(menu)
         menu.Destroy()
+
+    def set_focus(self, focus):
+        if type(focus.GetParent()) in (wx.SpinCtrlDouble, UnknownHexCtrl, SingleSelectionBox, MultipleSelectionBox):
+            self.focus = focus.GetParent()
+        elif type(focus.GetParent().GetParent()) in (SingleSelectionBox, MultipleSelectionBox):
+            self.focus = focus.GetParent().GetParent()
+        else:
+            self.focus = focus
+
+    def clear_focus(self):
+        self.focus = None
