@@ -134,6 +134,8 @@ class MainWindow(wx.Frame):
         self.part_sets_list = self.main_panel.pages["Part Sets"].entry_list
         self.part_colors_list = self.main_panel.pages["Part Colors"].entry_list
         self.body_list = self.main_panel.pages["Bodies"].entry_list
+        self.skeleton_list = self.main_panel.pages["Skeletons"].entry_list
+
         color_db.image_list = wx.ImageList(16, 16)
         self.part_sets_list.SetImageList(color_db.image_list)
         self.part_colors_list.SetImageList(color_db.image_list)
@@ -217,7 +219,7 @@ class MainWindow(wx.Frame):
         self.part_sets_list.AddRoot("Parts")
         for i, part_set in enumerate(self.bcs.part_sets):
             part_set_entry = self.part_sets_list.AppendItem(
-                self.part_sets_list.GetRootItem(), f"Part Set {i}", data=part_set)
+                self.part_sets_list.GetRootItem(), f"{i}: Part Set", data=part_set)
             self.load_parts(part_set_entry, part_set)
 
     def load_parts(self, root, part_set):
@@ -232,7 +234,7 @@ class MainWindow(wx.Frame):
     def load_color_selector(self, root, part):
         if not part.color_selectors:
             return
-        color_selector_entry = self.part_sets_list.AppendItem(root, "Color Selector")
+        color_selector_entry = self.part_sets_list.AppendItem(root, "Color Selectors")
         for i, color_selector in enumerate(part.color_selectors):
             name = self.bcs.part_colors[color_selector.part_colors].name
             item = self.part_sets_list.AppendItem(
@@ -278,7 +280,7 @@ class MainWindow(wx.Frame):
         self.body_list.AddRoot("Bodies")
         for i, body in enumerate(self.bcs.bodies):
             body_entry = self.body_list.AppendItem(
-                self.body_list.GetRootItem(), f"Body {i}", data=body)
+                self.body_list.GetRootItem(), f"{i}: Body", data=body)
             self.load_bone_scales(body_entry, body)
 
     def load_bone_scales(self, root, body):
@@ -292,7 +294,7 @@ class MainWindow(wx.Frame):
         self.skeleton_list.AddRoot("Skeleton")
         for i, skeleton in enumerate(self.bcs.skeletons):
             skeleton_entry = self.skeleton_list.AppendItem(
-                self.skeleton_list.GetRootItem(), f"Skeleton {i}", data=skeleton)
+                self.skeleton_list.GetRootItem(), f"{i}: Skeleton", data=skeleton)
             self.load_bones(skeleton_entry, skeleton)
 
     def load_bones(self, root, skeleton):
@@ -323,6 +325,8 @@ class MainWindow(wx.Frame):
         dlg.Destroy()
 
     def reindex_part_sets(self, selected=None):
+        if not self.bcs or self.bcs.part_sets:
+            return
         item = self.part_sets_list.GetRootItem()
         part_set_index = 0
         color_selector_index = 0
@@ -330,7 +334,7 @@ class MainWindow(wx.Frame):
         while item:
             data = self.part_sets_list.GetItemData(item)
             if isinstance(data, PartSet):
-                self.part_sets_list.SetItemText(item, f"Part Set {part_set_index}")
+                self.part_sets_list.SetItemText(item, f"{part_set_index}: Part Set")
                 part_set_index += 1
             elif isinstance(data, Part):
                 color_selector_index = 0
@@ -351,6 +355,8 @@ class MainWindow(wx.Frame):
             item = self.get_next_item(self.part_sets_list, item)
 
     def reindex_part_colors(self, selected=None):
+        if not self.bcs or self.bcs.part_colors:
+            return
         item = self.part_colors_list.GetRootItem()
         part_color_name = ''
         part_color_index = 0
@@ -374,13 +380,15 @@ class MainWindow(wx.Frame):
             item = self.get_next_item(self.part_colors_list, item)
 
     def reindex_bodies(self, selected=None):
+        if not self.bcs or self.bcs.bodies:
+            return
         body_index = 0
         bone_scale_index = 0
         item = self.body_list.GetRootItem()
         while item:
             data = self.body_list.GetItemData(item)
             if isinstance(data, Body):
-                self.body_list.SetItemText(item, f"Body {body_index}")
+                self.body_list.SetItemText(item, f"{body_index}: Body")
                 body_index += 1
                 bone_scale_index = 0
             elif isinstance(data, BoneScale):
@@ -389,13 +397,15 @@ class MainWindow(wx.Frame):
             item = self.get_next_item(self.body_list, item)
 
     def reindex_skeletons(self, selected=None):
+        if not self.bcs or not self.bcs.skeletons:
+            return
         item = self.skeleton_list.GetRootItem()
         skeleton_index = 0
         bone_index = 0
         while item:
             data = self.skeleton_list.GetItemData(item)
             if isinstance(data, Skeleton):
-                self.skeleton_list.SetItemText(item, f"Skeleton {skeleton_index}")
+                self.skeleton_list.SetItemText(item, f"{skeleton_index}: Skeleton")
                 skeleton_index += 1
                 bone_index = 0
             elif isinstance(data, Bone):

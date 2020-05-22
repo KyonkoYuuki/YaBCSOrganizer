@@ -1,9 +1,8 @@
 from collections import defaultdict
+from functools import partial
 import wx
 
 from pubsub import pub
-from wx.dataview import TreeListCtrl, TL_MULTIPLE, EVT_TREELIST_SELECTION_CHANGED, EVT_TREELIST_ITEM_CONTEXT_MENU
-
 
 from pyxenoverse.bcs.part_set import PartSet, BCS_PART_LIST
 from pyxenoverse.bcs.part import Part
@@ -15,6 +14,8 @@ from pyxenoverse.bcs.color import Color
 from pyxenoverse.bcs.bone_scale import BoneScale
 from pyxenoverse.bcs.skeleton import Skeleton
 from pyxenoverse.bcs.bone import Bone
+
+from yabcs.colordb import color_db
 
 
 class ListPanel(wx.Panel):
@@ -45,6 +46,166 @@ class ListPanel(wx.Panel):
         self.SetSizer(sizer)
         self.SetAutoLayout(1)
 
+    def add_part_set(self, _, append, entry=None):
+        self.add_item(_, append, entry, PartSet, "part_sets")
+
+    def add_part_color(self, _, append, entry=None):
+        self.add_item(_, append, entry, PartColor, "part_colors")
+
+    def add_body(self, _, append, entry=None):
+        self.add_item(_, append, entry, Body, "bodies")
+
+    def add_skeleton(self, _, append, entry=None):
+        self.add_item(_, append, entry, Skeleton, "skeletons")
+
+    def add_item(self, _, append, entry, item_type, name):
+        if not entry:
+            entry = self.entry_list.GetSelections()[0]
+        text = self.entry_list.GetItemText(entry)
+        data = self.entry_list.GetItemData(entry)
+        parent = self.entry_list.GetRootItem()
+        if not isinstance(data, item_type):
+            return
+        index = int(text.split(':')[0])
+        if append:
+            index += 1
+
+        # Add Part Set
+        new_type = item_type()
+        getattr(color_db.bcs, name).insert(index, new_type)
+
+        # Insert into Treelist
+        new_item = self.entry_list.InsertItem(parent, index, "", data=new_type)
+
+        # Part Colors only
+        if isinstance(new_type, PartColor):
+            print("Are we adding?")
+            color_db.insert(index, [])
+
+        # Reindex
+        pub.sendMessage(f"reindex_{name}")
+        return new_item, new_type
+
+    def add_color(self, _, append, entry=None):
+        self.add_sub_items(_, append, entry, PartColor, "part_colors", Color, "colors")
+
+    def add_bone_scale(self, _, append, entry=None):
+        self.add_sub_items(_, append, entry, Body, "bodies", BoneScale, "bone_scales")
+
+    def add_bone(self, _, append, entry=None):
+        self.add_sub_items(_, append, entry, Skeleton, "skeletons", Bone, "bones")
+
+    def add_sub_items(self, _, append, entry, parent_type, parent_name, item_type, name):
+        if not entry:
+            entry = self.entry_list.GetSelections()[0]
+        text = self.entry_list.GetItemText(entry)
+        data = self.entry_list.GetItemData(entry)
+        if not isinstance(data, item_type) and not isinstance(data, parent_type):
+            return
+
+        if isinstance(data, item_type) and append:
+            parent = self.entry_list.GetItemParent(entry)
+            parent_data = self.entry_list.GetItemData(parent)
+            attr_list = getattr(parent_data, name)
+            index = int(text.split(':')[0]) + 1
+        elif isinstance(data, item_type) and not append:
+            parent = self.entry_list.GetItemParent(entry)
+            parent_data = self.entry_list.GetItemData(parent)
+            attr_list = getattr(parent_data, name)
+            index = int(text.split(':')[0])
+        elif isinstance(data, parent_type):
+            parent = entry
+            parent_data = self.entry_list.GetItemData(parent)
+            attr_list = getattr(parent_data, name.lower())
+            index = len(attr_list)
+        else:
+            return
+
+        # Add new type
+        new_type = item_type()
+        attr_list.insert(index, new_type)
+
+        # Insert into Treelist
+        new_item = self.entry_list.InsertItem(parent, index, "", data=new_type)
+
+        # Colors only
+        if isinstance(new_type, Color):
+            bitmap = wx.Bitmap.FromRGBA(16, 16, 0, 0, 0, 255)
+            image = color_db.image_list.Add(bitmap)
+            parent_text = self.entry_list.GetItemText(parent)
+            parent_index = int(parent_text.split(':')[0])
+            color_db[parent_index].insert(index, image)
+            self.entry_list.SetItemImage(new_item, image)
+
+        # Reindex
+        pub.sendMessage(f"reindex_{parent_name}")
+        return new_item, new_type
+
+    def add_color_selector(self, _, append, entry=None):
+        self.add_parts_item(_, append, entry, ColorSelector, "Color Selectors")
+
+    def add_physics(self, _, append, entry=None):
+        self.add_parts_item(_, append, entry, Physics, "Physics")
+
+    def add_parts_item(self, _, append, entry, item_type, label):
+        if not entry:
+            entry = self.entry_list.GetSelections()[0]
+        text = self.entry_list.GetItemText(entry)
+        data = self.entry_list.GetItemData(entry)
+        name = label.replace(" ", "_").lower()
+        if not isinstance(data, item_type) and not isinstance(data, Part) and text != label:
+            return
+
+        if isinstance(data, item_type) and append:
+            item_list = self.entry_list.GetItemParent(entry)
+            part_item = self.entry_list.GetItemParent(item_list)
+            part = self.entry_list.GetItemData(part_item)
+            part_attr_list = getattr(part, name)
+            index = int(text.split(':')[0]) + 1
+        elif isinstance(data, item_type) and not append:
+            item_list = self.entry_list.GetItemParent(entry)
+            part_item = self.entry_list.GetItemParent(item_list)
+            part = self.entry_list.GetItemData(part_item)
+            part_attr_list = getattr(part, name)
+            index = int(text.split(':')[0])
+        elif isinstance(data, Part):
+            child, cookie = self.entry_list.GetFirstChild(entry)
+            item_list = None
+            while child.IsOk():
+                text = self.entry_list.GetItemText(child)
+                if text == label:
+                    item_list = child
+                    break
+                child, cookie = self.entry_list.GetNextChild(entry, cookie)
+            if not item_list:
+                if isinstance(item_type, ColorSelector):
+                    item_list = self.entry_list.InsertItem(entry, 0, label)
+                else:
+                    item_list = self.entry_list.AppendItem(entry, label)
+            part_item = self.entry_list.GetItemParent(item_list)
+            part = self.entry_list.GetItemData(part_item)
+            part_attr_list = getattr(part, name)
+            index = len(part_attr_list)
+        else:
+            item_list = entry
+            part_item = self.entry_list.GetItemParent(item_list)
+            part = self.entry_list.GetItemData(part_item)
+            part_attr_list = getattr(part, name)
+            index = len(part_attr_list)
+
+        # Add Part Set
+        new_type = item_type()
+        if isinstance(new_type, Physics):
+            new_type.name = part.name
+        part_attr_list.insert(index, new_type)
+
+        # Insert into Treelist
+        new_item = self.entry_list.InsertItem(item_list, index, "", data=new_type)
+
+        # Reindex
+        pub.sendMessage(f"reindex_part_sets")
+        return new_item, new_type
+
     def on_select(self, _):
         if not self.entry_list:
             return
@@ -55,10 +216,16 @@ class ListPanel(wx.Panel):
         entry = self.entry_list.GetItemData(selected[0])
         pub.sendMessage('load_entry', item=selected[0], entry=entry)
 
-    def add_menu_items(self, menu, name):
-        menu.Append(self.add_ids[name], f"Add {name}", f"Add {name} at the end")
-        menu.Append(self.append_ids[name], f"Append {name}", f"Append {name} after")
-        menu.Append(self.insert_ids[name], f"Insert {name}", f"Insert {name} before")
+    def add_menu_items(self, menu, name, add_only=False):
+        add_func = getattr(self, f"add_{name.replace(' ', '_').lower()}")
+        if add_only:
+            add = menu.Append(self.add_ids[name], f"Add {name}", f"Add {name} at the end")
+            self.Bind(wx.EVT_MENU, partial(add_func, append=True), add)
+        if not add_only:
+            append = menu.Append(self.append_ids[name], f"Add {name}", f"Append {name} after")
+            self.Bind(wx.EVT_MENU, partial(add_func, append=True), append)
+            insert = menu.Append(self.insert_ids[name], f"Insert {name}", f"Insert {name} before")
+            self.Bind(wx.EVT_MENU, partial(add_func, append=False), insert)
 
     def add_part_items(self, menu, part_set):
         sub_menu = wx.Menu()
@@ -70,6 +237,7 @@ class ListPanel(wx.Panel):
 
     def add_single_selection_items(self, menu, selected):
         data = self.entry_list.GetItemData(selected)
+        text = self.entry_list.GetItemText(selected)
         if isinstance(data, PartSet):
             self.add_menu_items(menu, "Part Set")
             menu.AppendSeparator()
@@ -82,10 +250,10 @@ class ListPanel(wx.Panel):
             self.add_menu_items(menu, "Color Selector")
             menu.AppendSeparator()
             self.add_menu_items(menu, "Physics")
-        elif isinstance(data, ColorSelector):
-            self.add_menu_items(menu, "Color Selector")
-        elif isinstance(data, Physics):
-            self.add_menu_items(menu, "Physics")
+        elif isinstance(data, ColorSelector) or text == "Color Selectors":
+            self.add_menu_items(menu, "Color Selector", data is None)
+        elif isinstance(data, Physics) or text == "Physics":
+            self.add_menu_items(menu, "Physics", data is None)
         elif isinstance(data, PartColor):
             self.add_menu_items(menu, "Part Color")
             menu.AppendSeparator()
