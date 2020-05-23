@@ -6,7 +6,7 @@ class PartPanel(BasePanel):
     def __init__(self, *args):
         BasePanel.__init__(self, *args)
 
-        self.controls['name'] = self.add_text_entry(self.entry_page, 'Name')
+        self.controls['name'] = self.add_text_entry(self.entry_page, 'Name', maxlen=3)
         self.controls['model'] = self.add_num_entry(self.entry_page, 'Model')
         self.controls['model2'] = self.add_num_entry(self.entry_page, 'Model2')
         self.controls['texture'] = self.add_num_entry(self.entry_page, 'DYT Texture Index')
