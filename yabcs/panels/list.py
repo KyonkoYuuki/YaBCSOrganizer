@@ -278,6 +278,15 @@ class ListPanel(wx.Panel):
                         if color_selector.part_colors == part_color_index and color_selector.color >= color_index:
                             color_selector.color -= 1
 
+    def add_new_list_item(self, item, index, data, label=""):
+        new_item = self.entry_list.InsertItem(item, index, label, data=data)
+        self.entry_list.UnselectAll()
+        self.expand_parents(new_item)
+        self.entry_list.SelectItem(new_item)
+        if not self.entry_list.IsVisible(new_item):
+            self.entry_list.ScrollTo(new_item)
+        return new_item
+
     def add_part_set(self, _, append=True, entry=None, add_at_end=False):
         self.add_item(append, entry, PartSet, "part_sets", add_at_end)
 
@@ -488,15 +497,6 @@ class ListPanel(wx.Panel):
         pub.sendMessage("reindex_part_sets")
         pub.sendMessage("set_status_bar", text=f"Added {label} successfully")
         return new_item, new_type
-
-    def add_new_list_item(self, item, index, data, label=""):
-        new_item = self.entry_list.InsertItem(item, index, label, data=data)
-        self.entry_list.UnselectAll()
-        self.expand_parents(new_item)
-        self.entry_list.SelectItem(new_item)
-        if not self.entry_list.IsVisible(new_item):
-            self.entry_list.ScrollTo(new_item)
-        return new_item
 
     def on_select(self, _):
         if not self.entry_list:
