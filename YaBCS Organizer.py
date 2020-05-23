@@ -66,6 +66,16 @@ class MainWindow(wx.Frame):
         pub.subscribe(self.open_bcs, 'open_bcs')
         pub.subscribe(self.load_bcs, 'load_bcs')
         pub.subscribe(self.save_bcs, 'save_bcs')
+        pub.subscribe(self.load_part_sets, 'load_part_sets')
+        pub.subscribe(self.load_parts, 'load_parts')
+        pub.subscribe(self.load_color_selectors, 'load_color_selectors')
+        pub.subscribe(self.load_physics, 'load_physics')
+        pub.subscribe(self.load_part_colors, 'load_part_colors')
+        pub.subscribe(self.load_colors, 'load_colors')
+        pub.subscribe(self.load_bodies, 'load_bodies')
+        pub.subscribe(self.load_bone_scales, 'load_bone_scales')
+        pub.subscribe(self.load_skeletons, 'load_skeletons')
+        pub.subscribe(self.load_bones, 'load_bones')
         pub.subscribe(self.set_status_bar, 'set_status_bar')
         pub.subscribe(self.reindex_part_sets, 'reindex_part_sets')
         pub.subscribe(self.reindex_part_colors, 'reindex_part_colors')
@@ -215,15 +225,15 @@ class MainWindow(wx.Frame):
         pub.sendMessage('hide_panels')
 
         self.load_part_colors()  # Need to load this first
-        self.load_part_set()
+        self.load_part_sets()
         self.load_bodies()
-        self.load_skeleton()
+        self.load_skeletons()
 
         self.name.SetLabel(filename)
         self.main_panel.Layout()
         self.statusbar.SetStatusText(f"Loaded {path}")
 
-    def load_part_set(self):
+    def load_part_sets(self):
         self.part_set_list.DeleteAllItems()
         self.part_set_list.AddRoot("Parts")
         for i, part_set in enumerate(self.bcs.part_sets):
@@ -237,13 +247,14 @@ class MainWindow(wx.Frame):
                 continue
             part = part_set.parts[part_name]
             part_entry = self.part_set_list.AppendItem(root, f"{i}: {part_name.replace('_', ' ').title()}", data=part)
-            self.load_color_selector(part_entry, part)
+            self.load_color_selectors(part_entry, part)
             self.load_physics(part_entry, part)
 
-    def load_color_selector(self, root, part):
+    def load_color_selectors(self, root, part, color_selector_entry=None):
         if not part.color_selectors:
             return
-        color_selector_entry = self.part_set_list.AppendItem(root, "Color Selectors", data=part.color_selectors)
+        if not color_selector_entry:
+            color_selector_entry = self.part_set_list.AppendItem(root, "Color Selectors", data=part.color_selectors)
         for i, color_selector in enumerate(part.color_selectors):
             name = self.bcs.part_colors[color_selector.part_colors].name
             item = self.part_set_list.AppendItem(
@@ -251,10 +262,11 @@ class MainWindow(wx.Frame):
             image = color_db[color_selector.part_colors][color_selector.color]
             self.part_set_list.SetItemImage(item, image)
 
-    def load_physics(self, root, part):
+    def load_physics(self, root, part, physics_entry=None):
         if not part.physics:
             return
-        physics_entry = self.part_set_list.AppendItem(root, "Physics", data=part.physics)
+        if not physics_entry:
+            physics_entry = self.part_set_list.AppendItem(root, "Physics", data=part.physics)
         for i, physics in enumerate(part.physics):
             self.part_set_list.AppendItem(physics_entry, f"{i}", data=physics)
 
@@ -298,7 +310,7 @@ class MainWindow(wx.Frame):
         for i, bone_scale in enumerate(body.bone_scales):
             self.body_list.AppendItem(root, f"{i}: {bone_scale.name}", data=bone_scale)
 
-    def load_skeleton(self):
+    def load_skeletons(self):
         self.skeleton_list.DeleteAllItems()
         self.skeleton_list.AddRoot("Skeleton")
         for i, skeleton in enumerate(self.bcs.skeletons):

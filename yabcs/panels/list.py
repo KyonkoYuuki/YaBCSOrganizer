@@ -111,30 +111,103 @@ class ListPanel(wx.Panel):
         selected = self.get_selected_root_nodes()
         if not selected:
             return
-        data = [self.entry_list.GetItemData(item) for item in selected]
-
-        if ((not isinstance(data[0], list) and not all(isinstance(d, type(data[0])) for d in data)) or
-                (isinstance(data[0], list) and not all(isinstance(d[0], type(data[0][0])) for d in data))):
-            with wx.MessageDialog(self, 'All selected items must be of the same type') as dlg:
-                dlg.ShowModal()
-            return
 
         paste_data = self.get_paste_data()
         if not paste_data:
             return
 
-        if ((not isinstance(data[0], list) and not all(isinstance(d, type(paste_data[0])) for d in data)) or
-                (isinstance(data[0], list) and isinstance(paste_data[0], list) and
-                 not all(isinstance(d[0], type(paste_data[0][0])) for d in data))):
+        # Get item type of paste data
+        actual_type = type(paste_data[0])
+        item_type = type(paste_data[0][0]) if actual_type == list else type(paste_data[0])
+
+        # Cut length to match copied
+        paste_length = len(paste_data)
+        selected_length = len(selected)
+        if selected_length > paste_length:
+            for item in selected[paste_length:]:
+                self.entry_list.UnselectItem(item)
+            selected = selected[:paste_length]
+
+        # Make sure currently selected items are all the same length
+        selected_data = [self.entry_list.GetItemData(item) for item in selected]
+        if ((not isinstance(selected_data[0], list) and not all(isinstance(d, type(selected_data[0])) for d in selected_data)) or
+                (isinstance(selected_data[0], list) and not all(isinstance(d[0], type(selected_data[0][0])) for d in selected_data))):
+            with wx.MessageDialog(self, 'All selected items must be of the same type') as dlg:
+                dlg.ShowModal()
+            return
+
+        # Check currently selected to make sure it matches
+        if ((not isinstance(selected_data[0], list) and not all(isinstance(d, actual_type) for d in selected_data)) or
+                (isinstance(selected_data[0], list) and actual_type == list and
+                 not all(isinstance(d[0], item_type) for d in selected_data))):
             if isinstance(paste_data[0], list):
-                item_type = paste_data[0][0].get_readable_name()
-                with wx.MessageDialog(self, f'All selected items must be a {item_type} list') as dlg:
+                with wx.MessageDialog(self, f'All selected items must be a {item_type.get_readable_name()} list') as dlg:
                     dlg.ShowModal()
             else:
-                item_type = paste_data[0].get_readable_name()
-                with wx.MessageDialog(self, f'All selected items must be a {item_type} item') as dlg:
+                with wx.MessageDialog(self, f'All selected items must be a {item_type.get_readable_name()} item') as dlg:
                     dlg.ShowModal()
             return
+
+        # Increase length to match selected
+        if selected_length < paste_length:
+            item = selected[-1]
+            parent = self.entry_list.GetItemParent(item)
+            for n in range(paste_length - selected_length):
+                item = self.entry_list.GetNextSibling(item)
+                if not item.IsOk():
+                    if item_type == Part:
+                        with wx.MessageDialog(self, f'Not enough entries to paste over. Expected {paste_length} parts') as dlg:
+                            dlg.ShowModal()
+                            return
+                    add_func = getattr(self, f"add_{item_type.get_func_name()}")
+                    item, item_data = add_func(None, entry=parent)
+                else:
+                    item_data = self.entry_list.GetItemData(item)
+                self.entry_list.SelectItem(item)
+                selected.append(item)
+                selected_data.append(item_data)
+
+        # Add to BCS first
+        for item, paste in zip(selected, paste_data):
+            data = self.entry_list.GetItemData(item)
+            text = self.entry_list.GetItemText(item)
+            part = None
+            if actual_type == list:
+                parent = self.entry_list.GetItemParent(item)
+                part = self.entry_list.GetItemData(parent)
+                func_name = f'paste_{item_type.get_func_name()}'
+                if not func_name.endswith('s'):
+                    func_name += 's'
+                getattr(part, func_name)(paste, False)
+            else:
+                data.paste(paste)
+
+            # Delete children and add new ones
+            self.entry_list.DeleteChildren(item)
+            if item_type == PartSet:
+                pub.sendMessage('load_parts', root=item, part_set=data)
+            elif item_type == Part:
+                pub.sendMessage('load_color_selectors', root=item, part=data)
+                pub.sendMessage('load_physics', root=item, part=data)
+            elif actual_type == list and item_type == ColorSelector:
+                pub.sendMessage('load_color_selectors', root=None, part=part, color_selector_entry=item)
+            elif actual_type == list and item_type == Physics:
+                print(part.physics)
+                pub.sendMessage('load_physics', root=None, part=part, physics_entry=item)
+            elif item_type == PartColor:
+                color_set = []
+                index = int(text.split(':')[0])
+                pub.sendMessage('load_colors', root=item, part_color=data, color_set=color_set)
+                color_db[index] = color_set
+            elif item_type == Body:
+                pub.sendMessage('load_bone_scales', root=item, body=data)
+            elif item_type == Skeleton:
+                pub.sendMessage('load_bones', root=item, skeleton=data)
+
+        # Reindex
+        pub.sendMessage(self.reindex_name)
+
+        # Reload selected data if applicable
 
         # data = self.entry_list.GetItemData(item)
         # text = self.entry_list.GetItemText(item)
@@ -173,6 +246,7 @@ class ListPanel(wx.Panel):
             parent = self.entry_list.GetItemParent(item)
             parent_data = self.entry_list.GetItemData(parent)
             index = -1
+            conflicts = []
             # Get Index
             if not isinstance(data, list):
                 index = int(text.split(':')[0])
@@ -184,6 +258,9 @@ class ListPanel(wx.Panel):
                 parent_data.color_selectors.clear()
             elif isinstance(data, PartSet):
                 color_db.bcs.part_sets.pop(index)
+            elif isinstance(data, Part):
+                name = text.split(':')[1].strip().replace(' ', '_').lower()
+                parent_data.parts.pop(name)
             elif isinstance(data, ColorSelector):
                 part_set_item = self.entry_list.GetItemParent(parent)
                 part_set = self.entry_list.GetItemData(part_set_item)
@@ -196,26 +273,28 @@ class ListPanel(wx.Panel):
                 conflicts = self.check_color_conflicts(index)
                 if conflicts:
                     msg = "\n".join([f"* Part Set {c[0]}, {c[1]}\n" for c in conflicts])
-                    with MultiMessageDialog(self, "Cannot delete Part Color.  The following parts are still using it:",
+                    with MultiMessageDialog(self, f"Cannot delete Part Color {index}."
+                                            "The following parts are still using it:",
                                             "Warning", msg, wx.OK) as dlg:
                         dlg.ShowModal()
-                    return
-                color_db.bcs.part_colors.pop(index)
-                color_db.pop(index)
-                self.delete_colors(index)
+                else:
+                    color_db.bcs.part_colors.pop(index)
+                    color_db.pop(index)
+                    self.delete_colors(index)
             elif isinstance(data, Color):
                 parent_text = self.entry_list.GetItemText(parent)
                 parent_index = int(parent_text.split(':')[0])
                 conflicts = self.check_color_conflicts(parent_index, index)
                 if conflicts:
                     msg = "\n".join([f"* Part Set {c[0]}, {c[1]}" for c in conflicts])
-                    with MultiMessageDialog(self, "Cannot delete Part Color.  The following parts are still using it:",
+                    with MultiMessageDialog(self, f"Cannot delete Part Color {parent_index}, Color {index}."
+                                            "The following parts are still using it:",
                                             "Warning", msg, wx.OK) as dlg:
                         dlg.ShowModal()
-                    return
-                parent_data.colors.pop(index)
-                color_db[parent_index].pop(index)
-                self.delete_colors(parent_index, index)
+                else:
+                    parent_data.colors.pop(index)
+                    color_db[parent_index].pop(index)
+                    self.delete_colors(parent_index, index)
             elif isinstance(data, Body):
                 color_db.bcs.bodies.pop(index)
             elif isinstance(data, BoneScale):
@@ -226,10 +305,11 @@ class ListPanel(wx.Panel):
                 parent_data.bones.pop(index)
 
             # Finally Delete from Tree
-            self.entry_list.Delete(item)
+            if not conflicts:
+                self.entry_list.Delete(item)
 
-            pub.sendMessage(self.reindex_name)
-            pub.sendMessage('set_status_bar', text="Deleted successfully")
+        pub.sendMessage(self.reindex_name)
+        pub.sendMessage('set_status_bar', text="Deleted successfully")
 
     def expand_parents(self, item):
         root = self.entry_list.GetRootItem()
@@ -278,28 +358,30 @@ class ListPanel(wx.Panel):
                         if color_selector.part_colors == part_color_index and color_selector.color >= color_index:
                             color_selector.color -= 1
 
-    def add_new_list_item(self, item, index, data, label=""):
+    def add_new_list_item(self, item, index, data, label="", skip_select=False):
         new_item = self.entry_list.InsertItem(item, index, label, data=data)
-        self.entry_list.UnselectAll()
-        self.expand_parents(new_item)
-        self.entry_list.SelectItem(new_item)
-        if not self.entry_list.IsVisible(new_item):
-            self.entry_list.ScrollTo(new_item)
+        if skip_select:
+            self.entry_list.UnselectAll()
+            self.expand_parents(new_item)
+            self.entry_list.SelectItem(new_item)
+            if not self.entry_list.IsVisible(new_item):
+                self.entry_list.ScrollTo(new_item)
         return new_item
 
-    def add_part_set(self, _, append=True, entry=None, add_at_end=False):
-        self.add_item(append, entry, PartSet, "part_sets", add_at_end)
+    def add_part_set(self, _, append=True, entry=None, add_at_end=False, skip_reindex=False):
+        return self.add_item(append, entry, PartSet, "part_sets", add_at_end, skip_reindex)
 
-    def add_part_color(self, _, append=True, entry=None, add_at_end=False):
-        self.add_item(append, entry, PartColor, "part_colors", add_at_end)
+    def add_part_color(self, _, append=True, entry=None, add_at_end=False, skip_reindex=False):
+        return self.add_item(append, entry, PartColor, "part_colors", add_at_end, skip_reindex)
 
-    def add_body(self, _, append=True, entry=None, add_at_end=False):
-        self.add_item(append, entry, Body, "bodies", add_at_end)
+    def add_body(self, _, append=True, entry=None, add_at_end=False, skip_reindex=False):
+        return self.add_item(append, entry, Body, "bodies", add_at_end, skip_reindex)
 
-    def add_skeleton(self, _, append=True, entry=None, add_at_end=False):
-        self.add_item(append, entry, Skeleton, "skeletons", add_at_end)
+    def add_skeleton(self, _, append=True, entry=None, add_at_end=False, skip_reindex=False):
+        return self.add_item(append, entry, Skeleton, "skeletons", add_at_end, skip_reindex)
 
-    def add_item(self, append, entry, item_type, name, add_at_end):
+    def add_item(self, append, entry, item_type, name, add_at_end, skip_reindex):
+        label = item_type.get_readable_name()
         if not add_at_end:
             if not entry:
                 entry = self.entry_list.GetSelections()[0]
@@ -320,14 +402,16 @@ class ListPanel(wx.Panel):
         getattr(color_db.bcs, name).insert(index, new_type)
 
         # Insert into Treelist
-        new_item = self.add_new_list_item(parent, index, new_type)
+        new_item = self.add_new_list_item(parent, index, new_type, "", skip_reindex)
 
         # Part Colors only
         if isinstance(new_type, PartColor):
             color_db.insert(index, [])
 
         # Reindex
-        pub.sendMessage(self.reindex_name)
+        if not skip_reindex:
+            pub.sendMessage(self.reindex_name)
+            pub.sendMessage("set_status_bar", text=f"Added {label} successfully")
         return new_item, new_type
 
     def add_part(self, _, part_name, entry=None):
@@ -376,16 +460,18 @@ class ListPanel(wx.Panel):
         pub.sendMessage("reindex_part_sets")
         return new_item, new_part
 
-    def add_color(self, _, append, entry=None):
-        self.add_sub_items(append, entry, PartColor, Color, "colors")
+    def add_color(self, _, append=True, entry=None, skip_reindex=False):
+        return self.add_sub_items(append, entry, PartColor, Color, skip_reindex)
 
-    def add_bone_scale(self, _, append, entry=None):
-        self.add_sub_items(append, entry, Body, BoneScale, "bone_scales")
+    def add_bone_scale(self, _, append=True, entry=None, skip_reindex=False):
+        return self.add_sub_items(append, entry, Body, BoneScale, skip_reindex)
 
-    def add_bone(self, _, append, entry=None):
-        self.add_sub_items(append, entry, Skeleton, Bone, "bones")
+    def add_bone(self, _, append=True, entry=None, skip_reindex=False):
+        return self.add_sub_items(append, entry, Skeleton, Bone, skip_reindex)
 
-    def add_sub_items(self, append, entry, parent_type, item_type, name):
+    def add_sub_items(self, append, entry, parent_type, item_type, skip_reindex):
+        name = f'{item_type.get_func_name()}s'
+        label = f'{item_type.get_func_name()}'
         if not entry:
             entry = self.entry_list.GetSelections()[0]
         text = self.entry_list.GetItemText(entry)
@@ -406,7 +492,7 @@ class ListPanel(wx.Panel):
         elif isinstance(data, parent_type):
             parent = entry
             parent_data = self.entry_list.GetItemData(parent)
-            attr_list = getattr(parent_data, name.lower())
+            attr_list = getattr(parent_data, name)
             index = len(attr_list)
         else:
             return
@@ -416,7 +502,7 @@ class ListPanel(wx.Panel):
         attr_list.insert(index, new_type)
 
         # Insert into Treelist
-        new_item = self.add_new_list_item(parent, index, new_type)
+        new_item = self.add_new_list_item(parent, index, new_type, "", skip_reindex)
 
         # Colors only
         if isinstance(new_type, Color):
@@ -428,16 +514,24 @@ class ListPanel(wx.Panel):
             self.entry_list.SetItemImage(new_item, image)
 
         # Reindex
-        pub.sendMessage(self.reindex_name)
+        if not skip_reindex:
+            pub.sendMessage(self.reindex_name)
+            pub.sendMessage("set_status_bar", text=f"Added {label} successfully")
         return new_item, new_type
 
-    def add_color_selector(self, _, append, entry=None):
-        self.add_parts_item(append, entry, ColorSelector, "Color Selectors")
+    def add_color_selector(self, _, append=True, entry=None, skip_reindex=False):
+        return self.add_parts_item(append, entry, ColorSelector, skip_reindex)
 
-    def add_physics(self, _, append, entry=None):
-        self.add_parts_item(append, entry, Physics, "Physics")
+    def add_physics(self, _, append=True, entry=None, skip_reindex=False):
+        return self.add_parts_item(append, entry, Physics, skip_reindex)
 
-    def add_parts_item(self, append, entry, item_type, label):
+    def add_parts_item(self, append, entry, item_type, skip_reindex):
+        name = item_type.get_func_name()
+        label = item_type.get_readable_name()
+        if not name.endswith('s'):
+            name += "s"
+        if not label.endswith('s'):
+            label += "s"
         if not entry:
             entry = self.entry_list.GetSelections()[0]
         text = self.entry_list.GetItemText(entry)
@@ -456,24 +550,22 @@ class ListPanel(wx.Panel):
         elif isinstance(data, Part):
             child, cookie = self.entry_list.GetFirstChild(entry)
             item_list = None
+            item_index = 0
+            entry_index = 0
             while child.IsOk():
                 text = self.entry_list.GetItemText(child)
                 if text == label:
                     item_list = child
                     break
                 child, cookie = self.entry_list.GetNextChild(entry, cookie)
+                item_index += 1
+                if label > text:
+                    entry_index = item_index
             if not item_list:
-                if item_type == ColorSelector:
-                    item_list = self.entry_list.InsertItem(entry, 0, label, data=data.color_selectors)
-                    part_attr_list = data.color_selectors
-                    print("Color")
-                else:
-                    item_list = self.entry_list.AppendItem(entry, label, data=data.physics)
-                    part_attr_list = data.physics
-                    print("Physics")
+                part_attr_list = getattr(data, name)
+                item_list = self.entry_list.InsertItem(entry, entry_index, label, data=part_attr_list)
             else:
                 part_attr_list = self.entry_list.GetItemData(item_list)
-            print(part_attr_list)
             index = len(part_attr_list)
         else:
             item_list = entry
@@ -491,11 +583,12 @@ class ListPanel(wx.Panel):
         part_attr_list.insert(index, new_type)
 
         # Insert into Treelist
-        new_item = self.add_new_list_item(item_list, index, new_type)
+        new_item = self.add_new_list_item(item_list, index, new_type, "", skip_reindex)
 
         # Reindex
-        pub.sendMessage("reindex_part_sets")
-        pub.sendMessage("set_status_bar", text=f"Added {label} successfully")
+        if not skip_reindex:
+            pub.sendMessage("reindex_part_sets")
+            pub.sendMessage("set_status_bar", text=f"Added {label} successfully")
         return new_item, new_type
 
     def on_select(self, _):
