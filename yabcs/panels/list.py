@@ -1,5 +1,6 @@
 from collections import defaultdict
 from functools import partial
+import pickle
 import wx
 from wx.lib.dialogs import MultiMessageDialog
 
@@ -43,6 +44,8 @@ class ListPanel(wx.Panel):
         self.Bind(wx.EVT_MENU, self.on_open, id=wx.ID_OPEN)
         self.Bind(wx.EVT_MENU, self.on_save, id=wx.ID_SAVE)
         self.Bind(wx.EVT_MENU, self.on_delete, id=wx.ID_DELETE)
+        self.Bind(wx.EVT_MENU, self.on_copy, id=wx.ID_COPY)
+        self.Bind(wx.EVT_MENU, self.on_paste, id=wx.ID_PASTE)
 
         accelerator_table = wx.AcceleratorTable([
             (wx.ACCEL_CTRL, ord('c'), wx.ID_COPY),
@@ -67,22 +70,102 @@ class ListPanel(wx.Panel):
     def on_save(self, _):
         pub.sendMessage('save_bcs', e=None)
 
-    def on_delete(self, _):
-        selected = self.entry_list.GetSelections()
+    def on_copy(self, _):
+        items_to_copy = self.get_selected_root_nodes()
+        if not items_to_copy:
+            return
+        # Check to make sure all items are the same
+        data = [self.entry_list.GetItemData(item) for item in items_to_copy]
+        if ((not isinstance(data[0], list) and not all(isinstance(d, type(data[0])) for d in data)) or
+                (isinstance(data[0], list) and not all(isinstance(d[0], type(data[0][0])) for d in data))):
+            with wx.MessageDialog(self, 'All copied items must be of the same type') as dlg:
+                dlg.ShowModal()
+            return
+
+        self.cdo = wx.CustomDataObject('BCS')
+        self.cdo.SetData(pickle.dumps(data))
+        if wx.TheClipboard.Open():
+            wx.TheClipboard.SetData(self.cdo)
+            wx.TheClipboard.Flush()
+            wx.TheClipboard.Close()
+
+        if isinstance(data[0], list):
+            item_type = data[0][0].get_readable_name()
+            pub.sendMessage('set_status_bar', text=f'Copied {len(data)} {item_type} lists')
+        else:
+            item_type = data[0].get_readable_name()
+            pub.sendMessage('set_status_bar', text=f'Copied {len(data)} {item_type} items')
+
+    def get_paste_data(self):
+        cdo = wx.CustomDataObject('BCS')
+        success = False
+        if wx.TheClipboard.Open():
+            success = wx.TheClipboard.GetData(cdo)
+            wx.TheClipboard.Close()
+        if not success:
+            return []
+        return pickle.loads(cdo.GetData())
+
+    def on_paste(self, _):
+        # Get Selected
+        selected = self.get_selected_root_nodes()
         if not selected:
             return
-        root = self.entry_list.GetRootItem()
+        data = [self.entry_list.GetItemData(item) for item in selected]
 
-        # Only delete root nodes
-        items_to_delete = []
-        for item in selected:
-            parent = self.entry_list.GetItemParent(item)
-            while parent != root and parent.IsOk():
-                if parent in selected:
-                    break
-                parent = self.entry_list.GetItemParent(parent)
-            if parent == root:
-                items_to_delete.append(item)
+        if ((not isinstance(data[0], list) and not all(isinstance(d, type(data[0])) for d in data)) or
+                (isinstance(data[0], list) and not all(isinstance(d[0], type(data[0][0])) for d in data))):
+            with wx.MessageDialog(self, 'All selected items must be of the same type') as dlg:
+                dlg.ShowModal()
+            return
+
+        paste_data = self.get_paste_data()
+        if not paste_data:
+            return
+
+        if ((not isinstance(data[0], list) and not all(isinstance(d, type(paste_data[0])) for d in data)) or
+                (isinstance(data[0], list) and isinstance(paste_data[0], list) and
+                 not all(isinstance(d[0], type(paste_data[0][0])) for d in data))):
+            if isinstance(paste_data[0], list):
+                item_type = paste_data[0][0].get_readable_name()
+                with wx.MessageDialog(self, f'All selected items must be a {item_type} list') as dlg:
+                    dlg.ShowModal()
+            else:
+                item_type = paste_data[0].get_readable_name()
+                with wx.MessageDialog(self, f'All selected items must be a {item_type} item') as dlg:
+                    dlg.ShowModal()
+            return
+
+        # data = self.entry_list.GetItemData(item)
+        # text = self.entry_list.GetItemText(item)
+
+        # # Add it to BCS first
+        # if isinstance(paste_data, list):
+        #     if isinstance(paste_data[0], Physics) and (isinstance(data, Part) or text == "Physics"):
+        #         if not data:
+        #             parent =
+
+        #     elif isinstance(paste_data[0], ColorSelector) and (isinstance(data, Part) or text == "Color Selectors"):
+        #         pass
+        #     else:
+        #         with wx.MessageDialog(self, f"Unable to paste '{paste_data[0].get_readable_name()}' list "
+        #                               f"onto '{text}'") as dlg:
+        #             dlg.ShowModal()
+        #     return
+        # elif type(paste_data) == type(data):
+        #     data.paste(paste_data)
+        # else:
+        #     with wx.MessageDialog(self, f"Unable to paste '{paste_data.get_readable_name()}' type "
+        #                           f"onto '{text}'") as dlg:
+        #         dlg.ShowModal()
+        #     return
+
+        # Now add it to the tree list
+
+    def on_delete(self, _):
+        items_to_delete = self.get_selected_root_nodes()
+        if not items_to_delete:
+            return
 
         for item in reversed(items_to_delete):
             data = self.entry_list.GetItemData(item)
@@ -91,13 +174,13 @@ class ListPanel(wx.Panel):
             parent_data = self.entry_list.GetItemData(parent)
             index = -1
             # Get Index
-            if data:
+            if not isinstance(data, list):
                 index = int(text.split(':')[0])
 
             # Delete from BCS
-            if not data and text == "Physics":
+            if isinstance(data, list) and isinstance(data[0], Physics):
                 parent_data.physics.clear()
-            elif not data and text == "Color Selectors":
+            elif isinstance(data, list) and isinstance(data[0], ColorSelector):
                 parent_data.color_selectors.clear()
             elif isinstance(data, PartSet):
                 color_db.bcs.part_sets.pop(index)
@@ -147,6 +230,30 @@ class ListPanel(wx.Panel):
 
             pub.sendMessage(self.reindex_name)
             pub.sendMessage('set_status_bar', text="Deleted successfully")
+
+    def expand_parents(self, item):
+        root = self.entry_list.GetRootItem()
+        parent = self.entry_list.GetItemParent(item)
+        while parent != root:
+            self.entry_list.Expand(parent)
+            parent = self.entry_list.GetItemParent(parent)
+
+    def get_selected_root_nodes(self):
+        selected = self.entry_list.GetSelections()
+        if not selected:
+            return []
+        root = self.entry_list.GetRootItem()
+
+        nodes = []
+        for item in selected:
+            parent = self.entry_list.GetItemParent(item)
+            while parent != root and parent.IsOk():
+                if parent in selected:
+                    break
+                parent = self.entry_list.GetItemParent(parent)
+            if parent == root:
+                nodes.append(item)
+        return nodes
 
     def check_color_conflicts(self, part_color_index, color_index=-1):
         conflicts = []
@@ -204,7 +311,7 @@ class ListPanel(wx.Panel):
         getattr(color_db.bcs, name).insert(index, new_type)
 
         # Insert into Treelist
-        new_item = self.entry_list.InsertItem(parent, index, "", data=new_type)
+        new_item = self.add_new_list_item(parent, index, new_type)
 
         # Part Colors only
         if isinstance(new_type, PartColor):
@@ -254,22 +361,22 @@ class ListPanel(wx.Panel):
                 break
             part_item, cookie = self.entry_list.GetNextChild(part_set_item, cookie)
             tree_index += 1
-        new_item = self.entry_list.InsertItem(part_set_item, tree_index, f"{index}: {name}", data=new_part)
+        new_item = self.add_new_list_item(part_set_item, index, new_part, label=f"{index}: {name}")
 
         # Reindex
         pub.sendMessage("reindex_part_sets")
         return new_item, new_part
 
     def add_color(self, _, append, entry=None):
-        self.add_sub_items(append, entry, PartColor, "part_colors", Color, "colors")
+        self.add_sub_items(append, entry, PartColor, Color, "colors")
 
     def add_bone_scale(self, _, append, entry=None):
-        self.add_sub_items(append, entry, Body, "bodies", BoneScale, "bone_scales")
+        self.add_sub_items(append, entry, Body, BoneScale, "bone_scales")
 
     def add_bone(self, _, append, entry=None):
-        self.add_sub_items(append, entry, Skeleton, "skeletons", Bone, "bones")
+        self.add_sub_items(append, entry, Skeleton, Bone, "bones")
 
-    def add_sub_items(self, append, entry, parent_type, parent_name, item_type, name):
+    def add_sub_items(self, append, entry, parent_type, item_type, name):
         if not entry:
             entry = self.entry_list.GetSelections()[0]
         text = self.entry_list.GetItemText(entry)
@@ -300,7 +407,7 @@ class ListPanel(wx.Panel):
         attr_list.insert(index, new_type)
 
         # Insert into Treelist
-        new_item = self.entry_list.InsertItem(parent, index, "", data=new_type)
+        new_item = self.add_new_list_item(parent, index, new_type)
 
         # Colors only
         if isinstance(new_type, Color):
@@ -326,21 +433,16 @@ class ListPanel(wx.Panel):
             entry = self.entry_list.GetSelections()[0]
         text = self.entry_list.GetItemText(entry)
         data = self.entry_list.GetItemData(entry)
-        name = label.replace(" ", "_").lower()
         if not isinstance(data, item_type) and not isinstance(data, Part) and text != label:
             return
 
         if isinstance(data, item_type) and append:
             item_list = self.entry_list.GetItemParent(entry)
-            part_item = self.entry_list.GetItemParent(item_list)
-            part = self.entry_list.GetItemData(part_item)
-            part_attr_list = getattr(part, name)
+            part_attr_list = self.entry_list.GetItemData(item_list)
             index = int(text.split(':')[0]) + 1
         elif isinstance(data, item_type) and not append:
             item_list = self.entry_list.GetItemParent(entry)
-            part_item = self.entry_list.GetItemParent(item_list)
-            part = self.entry_list.GetItemData(part_item)
-            part_attr_list = getattr(part, name)
+            part_attr_list = self.entry_list.GetItemData(item_list)
             index = int(text.split(':')[0])
         elif isinstance(data, Part):
             child, cookie = self.entry_list.GetFirstChild(entry)
@@ -352,20 +454,26 @@ class ListPanel(wx.Panel):
                     break
                 child, cookie = self.entry_list.GetNextChild(entry, cookie)
             if not item_list:
-                if isinstance(item_type, ColorSelector):
-                    item_list = self.entry_list.InsertItem(entry, 0, label)
+                if item_type == ColorSelector:
+                    item_list = self.entry_list.InsertItem(entry, 0, label, data=data.color_selectors)
+                    part_attr_list = data.color_selectors
+                    print("Color")
                 else:
-                    item_list = self.entry_list.AppendItem(entry, label)
-            part_item = self.entry_list.GetItemParent(item_list)
-            part = self.entry_list.GetItemData(part_item)
-            part_attr_list = getattr(part, name)
+                    item_list = self.entry_list.AppendItem(entry, label, data=data.physics)
+                    part_attr_list = data.physics
+                    print("Physics")
+            else:
+                part_attr_list = self.entry_list.GetItemData(item_list)
+            print(part_attr_list)
             index = len(part_attr_list)
         else:
             item_list = entry
-            part_item = self.entry_list.GetItemParent(item_list)
-            part = self.entry_list.GetItemData(part_item)
-            part_attr_list = getattr(part, name)
+            part_attr_list = self.entry_list.GetItemData(item_list)
             index = len(part_attr_list)
+
+        # Get Part
+        part_item = self.entry_list.GetItemParent(item_list)
+        part = self.entry_list.GetItemData(part_item)
 
         # Add Part Set
         new_type = item_type()
@@ -374,11 +482,21 @@ class ListPanel(wx.Panel):
         part_attr_list.insert(index, new_type)
 
         # Insert into Treelist
-        new_item = self.entry_list.InsertItem(item_list, index, "", data=new_type)
+        new_item = self.add_new_list_item(item_list, index, new_type)
 
         # Reindex
         pub.sendMessage("reindex_part_sets")
+        pub.sendMessage("set_status_bar", text=f"Added {label} successfully")
         return new_item, new_type
+
+    def add_new_list_item(self, item, index, data, label=""):
+        new_item = self.entry_list.InsertItem(item, index, label, data=data)
+        self.entry_list.UnselectAll()
+        self.expand_parents(new_item)
+        self.entry_list.SelectItem(new_item)
+        if not self.entry_list.IsVisible(new_item):
+            self.entry_list.ScrollTo(new_item)
+        return new_item
 
     def on_select(self, _):
         if not self.entry_list:
@@ -392,16 +510,13 @@ class ListPanel(wx.Panel):
 
     def add_menu_items(self, menu, name, add_only=False):
         add_func = getattr(self, f"add_{name.replace(' ', '_').lower()}")
-        if add_only:
-            add = menu.Append(self.add_ids[name], f"Add {name}", f"Add {name} at the end")
-            self.Bind(wx.EVT_MENU, partial(add_func, append=True), add)
+        append = menu.Append(self.append_ids[name], f"Add {name}", f"Add {name} after")
+        self.Bind(wx.EVT_MENU, partial(add_func, append=True), append)
         if not add_only:
-            append = menu.Append(self.append_ids[name], f"Add {name}", f"Append {name} after")
-            self.Bind(wx.EVT_MENU, partial(add_func, append=True), append)
             insert = menu.Append(self.insert_ids[name], f"Insert {name}", f"Insert {name} before")
             self.Bind(wx.EVT_MENU, partial(add_func, append=False), insert)
 
-    def add_part_items(self, menu, part_set):
+    def add_menu_parts_items(self, menu, part_set):
         sub_menu = wx.Menu()
         for part in BCS_PART_LIST:
             name = part.replace('_', ' ').title()
@@ -416,19 +531,19 @@ class ListPanel(wx.Panel):
         if isinstance(data, PartSet):
             self.add_menu_items(menu, "Part Set")
             menu.AppendSeparator()
-            self.add_part_items(menu, data)
+            self.add_menu_parts_items(menu, data)
         elif isinstance(data, Part):
             part_set_item = self.entry_list.GetItemParent(selected)
             part_set = self.entry_list.GetItemData(part_set_item)
-            self.add_part_items(menu, part_set)
+            self.add_menu_parts_items(menu, part_set)
             menu.AppendSeparator()
-            self.add_menu_items(menu, "Color Selector")
+            self.add_menu_items(menu, "Color Selector", add_only=True)
             menu.AppendSeparator()
-            self.add_menu_items(menu, "Physics")
+            self.add_menu_items(menu, "Physics", add_only=True)
         elif isinstance(data, ColorSelector) or text == "Color Selectors":
-            self.add_menu_items(menu, "Color Selector", data is None)
+            self.add_menu_items(menu, "Color Selector", add_only=isinstance(data, list))
         elif isinstance(data, Physics) or text == "Physics":
-            self.add_menu_items(menu, "Physics", data is None)
+            self.add_menu_items(menu, "Physics", add_only=isinstance(data, list))
         elif isinstance(data, PartColor):
             self.add_menu_items(menu, "Part Color")
             menu.AppendSeparator()
@@ -455,10 +570,11 @@ class ListPanel(wx.Panel):
         menu = wx.Menu()
         if len(selections) == 1:
             self.add_single_selection_items(menu, selections[0])
+        menu.AppendSeparator()
 
         # copy = menu.Append(wx.ID_COPY, "&Copy\tCtrl+C", "Copy entry")
         # paste = menu.Append(wx.ID_PASTE, "&Paste\tCtrl+V", "Paste entry")
-        # delete = menu.Append(wx.ID_DELETE, "&Delete\tDelete", "Delete entry(s)")
+        menu.Append(wx.ID_DELETE, "&Delete\tDelete", "Delete selected items")
         # menu.Append(wx.ID_ADD, "Add &New Child\tCtrl+N", "Add child entry")
 
         # # TODO: replace

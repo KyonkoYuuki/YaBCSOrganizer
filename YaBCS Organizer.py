@@ -243,7 +243,7 @@ class MainWindow(wx.Frame):
     def load_color_selector(self, root, part):
         if not part.color_selectors:
             return
-        color_selector_entry = self.part_set_list.AppendItem(root, "Color Selectors")
+        color_selector_entry = self.part_set_list.AppendItem(root, "Color Selectors", data=part.color_selectors)
         for i, color_selector in enumerate(part.color_selectors):
             name = self.bcs.part_colors[color_selector.part_colors].name
             item = self.part_set_list.AppendItem(
@@ -254,7 +254,7 @@ class MainWindow(wx.Frame):
     def load_physics(self, root, part):
         if not part.physics:
             return
-        physics_entry = self.part_set_list.AppendItem(root, "Physics")
+        physics_entry = self.part_set_list.AppendItem(root, "Physics", data=part.physics)
         for i, physics in enumerate(part.physics):
             self.part_set_list.AppendItem(physics_entry, f"{i}", data=physics)
 
