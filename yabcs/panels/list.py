@@ -192,7 +192,6 @@ class ListPanel(wx.Panel):
             elif actual_type == list and item_type == ColorSelector:
                 pub.sendMessage('load_color_selectors', root=None, part=part, color_selector_entry=item)
             elif actual_type == list and item_type == Physics:
-                print(part.physics)
                 pub.sendMessage('load_physics', root=None, part=part, physics_entry=item)
             elif item_type == PartColor:
                 color_set = []
@@ -280,7 +279,7 @@ class ListPanel(wx.Panel):
                 else:
                     color_db.bcs.part_colors.pop(index)
                     color_db.pop(index)
-                    self.delete_colors(index)
+                    self.adjust_colors(index, delete=True)
             elif isinstance(data, Color):
                 parent_text = self.entry_list.GetItemText(parent)
                 parent_index = int(parent_text.split(':')[0])
@@ -294,7 +293,7 @@ class ListPanel(wx.Panel):
                 else:
                     parent_data.colors.pop(index)
                     color_db[parent_index].pop(index)
-                    self.delete_colors(parent_index, index)
+                    self.adjust_colors(parent_index, index, delete=True)
             elif isinstance(data, Body):
                 color_db.bcs.bodies.pop(index)
             elif isinstance(data, BoneScale):
@@ -345,22 +344,23 @@ class ListPanel(wx.Panel):
                         conflicts.append((ps_idx, part_name))
         return conflicts
 
-    def delete_colors(self, part_color_index, color_index=-1):
+    def adjust_colors(self, part_color_index, color_index=-1, delete=False):
+        modifier = -1 if delete else 1
         for ps_idx, part_set in enumerate(color_db.bcs.part_sets):
             for part_name, part in part_set.parts.items():
                 for cs_idx, color_selector in enumerate(part.color_selectors):
                     # Shift just part colors
                     if color_index == -1:
                         if color_selector.part_colors >= part_color_index:
-                            color_selector.part_colors -= 1
+                            color_selector.part_colors += modifier
                     # Shift colors
                     else:
                         if color_selector.part_colors == part_color_index and color_selector.color >= color_index:
-                            color_selector.color -= 1
+                            color_selector.color += modifier
 
-    def add_new_list_item(self, item, index, data, label="", skip_select=False):
+    def add_new_list_item(self, item, index, data, label="", skip_reindex=False):
         new_item = self.entry_list.InsertItem(item, index, label, data=data)
-        if skip_select:
+        if not skip_reindex:
             self.entry_list.UnselectAll()
             self.expand_parents(new_item)
             self.entry_list.SelectItem(new_item)
@@ -407,6 +407,7 @@ class ListPanel(wx.Panel):
         # Part Colors only
         if isinstance(new_type, PartColor):
             color_db.insert(index, [])
+            self.adjust_colors(index)
 
         # Reindex
         if not skip_reindex:
@@ -512,6 +513,7 @@ class ListPanel(wx.Panel):
             parent_index = int(parent_text.split(':')[0])
             color_db[parent_index].insert(index, image)
             self.entry_list.SetItemImage(new_item, image)
+            self.adjust_colors(parent_index, index)
 
         # Reindex
         if not skip_reindex:
