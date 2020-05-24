@@ -5,7 +5,7 @@ import wx.adv
 from pyxenoverse.gui import add_entry
 
 from yabcs.panels.types import BasePanel
-from yabcs.colordb import color_db
+from yabcs.utils import color_db
 
 
 class ColorSelectorPanel(BasePanel):

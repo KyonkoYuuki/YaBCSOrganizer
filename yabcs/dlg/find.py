@@ -3,25 +3,16 @@ import re
 import wx
 
 from pubsub import pub
-from pyxenoverse.bcs.part_set import PartSet
-from pyxenoverse.bcs.part import Part
-from pyxenoverse.bcs.color_selector import ColorSelector
-from pyxenoverse.bcs.physics import Physics
 from pyxenoverse.gui import get_first_item, get_next_item
 from pyxenoverse.gui.ctrl.hex_ctrl import HexCtrl
 from pyxenoverse.gui.ctrl.multiple_selection_box import MultipleSelectionBox
 from pyxenoverse.gui.ctrl.single_selection_box import SingleSelectionBox
 from pyxenoverse.gui.ctrl.unknown_hex_ctrl import UnknownHexCtrl
 
-from yabcs.colordb import color_db
+from yabcs.utils import FIND_ITEM_TYPES, color_db
 
 pattern = re.compile(r'([ \n/_])([a-z0-9]+)')
 
-ITEM_TYPES = [
-    (Part, ['name', "model", "model2", "texture", "emd_name", "emm_name", "ean_name", "dyt_options", "part_hiding"]),
-    (Physics, ['name', "texture", "emd_name", "emm_name", "esk_name", "bone_name", "scd_name", "dyt_options", "part_hiding"]),
-    (ColorSelector, ['part_colors', 'color']),
-]
 
 class FindDialog(wx.Dialog):
     def __init__(self, parent, main_panel, *args, **kw):
@@ -39,7 +30,7 @@ class FindDialog(wx.Dialog):
         self.hsizer = wx.BoxSizer()
         self.sizer.Add(self.hsizer)
 
-        self.items = wx.Choice(self, -1, choices=[item[0].get_readable_name() for item in ITEM_TYPES])
+        self.items = wx.Choice(self, -1, choices=[item[0].get_readable_name() for item in FIND_ITEM_TYPES])
         self.items.Bind(wx.EVT_CHOICE, self.on_choice)
 
         self.entry = wx.Choice(self, -1)
@@ -80,11 +71,11 @@ class FindDialog(wx.Dialog):
         self.SetAutoLayout(0)
 
     def on_show(self, e):
-        if not e.IsShown() or self.main_panel.notebook.GetSelection() != 0:
+        if not e.IsShown():
             return
         try:
             selected = self.part_sets_list.GetSelections()
-            item_types, fields = zip(*ITEM_TYPES)
+            item_types, fields = zip(*FIND_ITEM_TYPES)
             # Only set value if one item is selected
             if not len(selected) == 1:
                 return
@@ -120,8 +111,8 @@ class FindDialog(wx.Dialog):
     def on_choice(self, _):
         self.entry.Clear()
         selection = self.items.GetSelection()
-        if selection < len(ITEM_TYPES):
-            item_type, attrs = ITEM_TYPES[self.items.GetSelection()]
+        if selection < len(FIND_ITEM_TYPES):
+            item_type, attrs = FIND_ITEM_TYPES[self.items.GetSelection()]
             for attr in attrs:
                 self.entry.Append(attr)
         self.entry.Select(0)
@@ -159,7 +150,7 @@ class FindDialog(wx.Dialog):
             data = self.part_sets_list.GetItemData(item)
             if (type(data) == item_type and
                     (find is None or
-                     (not isinstance(find, str) and data[entry_type] == find) or
+                     (isinstance(find, int) and data[entry_type] == find) or
                      (isinstance(find, str) and find.lower() in data[entry_type].lower()))):
                 self.select_found(item, entry_type)
                 break
@@ -176,7 +167,7 @@ class FindDialog(wx.Dialog):
             return
         # Get Item Type
         selection = self.items.GetSelection()
-        item_type, fields = ITEM_TYPES[selection]
+        item_type, fields = FIND_ITEM_TYPES[selection]
 
         # Get Entry Type
         selection = self.entry.GetSelection()

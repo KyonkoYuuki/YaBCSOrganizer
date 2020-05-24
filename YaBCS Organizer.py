@@ -1,5 +1,7 @@
 #!/usr/local/bin/python3.6
+from functools import partial
 import os
+import pickle
 import sys
 import traceback
 
@@ -20,11 +22,11 @@ from pyxenoverse.bcs.color import Color
 from pyxenoverse.bcs.bone_scale import BoneScale
 from pyxenoverse.bcs.skeleton import Skeleton
 from pyxenoverse.bcs.bone import Bone
-from yabcs.colordb import color_db
+from yabcs.utils import color_db
 from yabcs.panels.main import MainPanel
 from yabcs.panels.side import SidePanel
 from yabcs.dlg.find import FindDialog
-# from yabcs.dlg.replace import ReplaceDialog
+from yabcs.dlg.replace import ReplaceDialog
 from pyxenoverse.gui import get_next_item
 from pyxenoverse.gui.file_drop_target import FileDropTarget
 
@@ -84,25 +86,20 @@ class MainWindow(wx.Frame):
         pub.subscribe(self.reindex_bodies, 'reindex_bodies')
         pub.subscribe(self.reindex_skeletons, 'reindex_skeletons')
         pub.subscribe(self.change_add_text, 'change_add_text')
+        pub.subscribe(self.enable_add_copy, 'enable_add_copy')
 
         # Events.
         self.Bind(wx.EVT_MENU, self.open_bcs, id=wx.ID_OPEN)
         self.Bind(wx.EVT_MENU, self.save_bcs, id=wx.ID_SAVE)
         self.Bind(wx.EVT_MENU, self.on_find, id=wx.ID_FIND)
-        # self.Bind(wx.EVT_MENU, self.on_replace, id=wx.ID_REPLACE)
+        self.Bind(wx.EVT_MENU, self.on_replace, id=wx.ID_REPLACE)
         self.Bind(wx.EVT_MENU, self.on_about, id=wx.ID_ABOUT)
         self.Bind(wx.EVT_MENU, self.on_exit, id=wx.ID_EXIT)
-        # self.Bind(wx.EVT_MENU, self.main_panel.on_copy, id=wx.ID_COPY)
-        # self.Bind(wx.EVT_MENU, self.main_panel.on_paste, id=wx.ID_PASTE)
-        # self.Bind(wx.EVT_MENU, self.main_panel.on_delete, id=wx.ID_DELETE)
-        # self.Bind(wx.EVT_MENU, self.main_panel.on_add_child, id=wx.ID_ADD)
-        # self.Bind(wx.EVT_MENU, self.main_panel.on_append, id=self.main_panel.append_id)
-        # self.Bind(wx.EVT_MENU, self.main_panel.on_insert, id=self.main_panel.insert_id)
         accelerator_table = wx.AcceleratorTable([
             (wx.ACCEL_CTRL, ord('o'), wx.ID_OPEN),
             (wx.ACCEL_CTRL, ord('s'), wx.ID_SAVE),
             (wx.ACCEL_CTRL, ord('f'), wx.ID_FIND),
-            # (wx.ACCEL_CTRL, ord('h'), wx.ID_REPLACE),
+            (wx.ACCEL_CTRL, ord('h'), wx.ID_REPLACE),
         ])
         self.SetAcceleratorTable(accelerator_table)
         self.SetDropTarget(FileDropTarget(self, "load_bcs"))
@@ -124,6 +121,10 @@ class MainWindow(wx.Frame):
         self.add_button.Disable()
         self.add_button.Bind(wx.EVT_BUTTON, self.on_add)
 
+        self.add_copy_button = wx.Button(self, wx.ID_ADD, "Add Part Set Copy", size=(150, -1))
+        self.add_copy_button.Disable()
+        self.add_copy_button.Bind(wx.EVT_BUTTON, partial(self.on_add, paste=True))
+
         hyperlink = HyperLinkCtrl(self, -1, "What do all these things mean?",
                                   URL="https://docs.google.com/document/d/"
                                       "1df8_Zs3g0YindDNees_CSrWVpMBtwWGrFf2FE8JruUk/edit?usp=sharing")
@@ -134,6 +135,7 @@ class MainWindow(wx.Frame):
         button_sizer.Add(open_button, 0, wx.LEFT, 10)
         button_sizer.Add(self.save_button, 0, wx.LEFT, 10)
         button_sizer.Add(self.add_button, 0, wx.LEFT, 10)
+        button_sizer.Add(self.add_copy_button, 0, wx.LEFT, 10)
         button_sizer.Add(hyperlink, 0, wx.ALL, 10)
 
         panel_sizer = wx.BoxSizer()
@@ -160,7 +162,7 @@ class MainWindow(wx.Frame):
 
         # Dialogs
         self.find = FindDialog(self, self.main_panel)
-        # self.replace = ReplaceDialog(self, -1)
+        self.replace = ReplaceDialog(self, self.main_panel)
 
         sizer.Layout()
         self.Show()
@@ -206,6 +208,7 @@ class MainWindow(wx.Frame):
         self.bcs = color_db.bcs = new_bcs
         color_db.name = filename[:3]
         self.add_button.Enable()
+        self.enable_add_copy()
         self.save_button.Enable()
         pub.sendMessage('hide_panels')
 
@@ -406,6 +409,9 @@ class MainWindow(wx.Frame):
                 part_color_index += 1
                 color_index = 0
             elif isinstance(data, Color):
+                if part_color_index - 1 > len(color_db):
+                    data.part_color_index = 0
+                    data.color = 0
                 image_index = color_db[part_color_index-1][color_index]
                 if part_color_name == 'eye_':
                     bitmap = wx.Bitmap.FromRGBA(16, 16, *data.color4[:3], 255)
@@ -454,8 +460,8 @@ class MainWindow(wx.Frame):
                 bone_index += 1
             item = get_next_item(self.skeleton_list, item)
 
-    def on_add(self, _):
-        text = self.add_button.GetLabelText()
+    def on_add(self, _, paste=False):
+        text = self.add_button.GetLabelText().replace(" Copy", "")
         if text.endswith('y'):
             page_name = f'{text[4:-1]}ies'
         else:
@@ -464,18 +470,35 @@ class MainWindow(wx.Frame):
         page = self.main_panel.pages[page_name]
         item_type = text[4:].replace(' ', '_').lower()
         add_item_func = getattr(page, f'add_{item_type}')
-        add_item_func(None, add_at_end=True)
+        add_item_func(None, add_at_end=True, paste=paste)
 
     def change_add_text(self, text):
         self.add_button.SetLabelText(f"Add {text}")
+        self.add_copy_button.SetLabelText(f"Add {text} Copy")
+        self.enable_add_copy()
+
+    def enable_add_copy(self):
+        text = self.add_copy_button.GetLabelText().replace(" Copy", "")[4:]
+        cdo = wx.CustomDataObject("BCSEntry")
+        success = False
+        valid = False
+        if wx.TheClipboard.Open():
+            success = wx.TheClipboard.GetData(cdo)
+            wx.TheClipboard.Close()
+        if success:
+            paste_data = pickle.loads(cdo.GetData())
+            if not isinstance(paste_data[0], list):
+                item_type = type(paste_data[0])
+                valid = not isinstance(item_type, list) and item_type.get_readable_name() == text
+        self.add_copy_button.Enable(valid)
 
     def on_find(self, _):
-        # if not self.replace.IsShown():
-        self.find.Show()
-    #
-    # def on_replace(self, _):
-    #     if not self.find.IsShown():
-    #         self.replace.Show()
+        if not self.replace.IsShown():
+            self.find.Show()
+
+    def on_replace(self, _):
+        if not self.find.IsShown():
+            self.replace.Show()
 
 
 if __name__ == '__main__':

@@ -1,8 +1,19 @@
+from enum import Enum
+
 import wx
+from wx.lib.dialogs import MultiMessageDialog
 from pubsub import pub
 
-from pyxenoverse.bac.sub_entry import ITEM_TYPES
-from yabac.dlg.find import FindDialog
+from pyxenoverse.gui import get_first_item, get_next_item
+from pyxenoverse.bcs.color_selector import ColorSelector
+from yabcs.dlg.find import FindDialog
+from yabcs.utils import FIND_ITEM_TYPES, color_db
+
+
+class Replace(Enum):
+    NOT_REPLACED = 0
+    REPLACED = 1
+    SKIPPED = 2
 
 
 class ReplaceDialog(FindDialog):
@@ -31,48 +42,116 @@ class ReplaceDialog(FindDialog):
         self.Layout()
 
     def on_replace(self, _):
-        item_type = ITEM_TYPES[self.items.GetSelection()]
-        entry_type = item_type.bac_record.__fields__[self.entry.GetSelection()]
-        try:
-            find = int(self.find_ctrl.GetValue(), 0)
-            replace = int(self.replace_ctrl.GetValue(), 0)
-        except ValueError:
-            self.status_bar.SetStatusText("Invalid Value")
-            return None
-        selected = self.entry_list.GetSelections()
+        if not color_db.bcs:
+            self.status_bar.SetStatusText("BCS Not Loaded")
+            return
+        item_type, fields = FIND_ITEM_TYPES[self.items.GetSelection()]
+        entry_type = fields[self.entry.GetSelection()]
+        find = self.find_ctrl.GetValue()
+        replace = self.replace_ctrl.GetValue()
+        if "name" not in entry_type:
+            try:
+                find = int(find, 0)
+                replace = int(replace, 0)
+            except ValueError:
+                self.status_bar.SetStatusText("Invalid Value")
+                return
+        selected = self.part_sets_list.GetSelections()
 
-        # Only do this if we have one selected item
+        # Only do this if we have don't have one selected item
         if len(selected) != 1:
-            self.find(self.entry_list.GetFirstItem(), item_type, entry_type, find)
+            item, _ = get_first_item(self.part_sets_list)
+            self.find(item, item_type, entry_type, find)
             return
         selected = selected[0]
-        data = self.entry_list.GetItemData(selected)
+        data = self.part_sets_list.GetItemData(selected)
 
         # Check to see if current entry is not one we're looking for
-        if type(data) == item_type and data[entry_type] == find:
-            data[entry_type] = replace
-            self.select_found(selected, entry_type)
-            pub.sendMessage('reindex')
+        res = self.replace_item(data, item_type, entry_type, find, replace)
+
+        # Reload if replaced
+        if res == Replace.REPLACED:
+            self.main_panel.pages["Part Sets"].on_select(None)
+
+        # Find next item to replace
         self.find(selected, item_type, entry_type, find)
+        if res == Replace.REPLACED:
+            self.status_bar.SetStatusText(f"Replaced 1 entry")
+        elif res == Replace.SKIPPED:
+            self.status_bar.SetStatusText(f"Skipped 1 entry. Check your part colors")
 
     def on_replace_all(self, _):
-        item_type = ITEM_TYPES[self.items.GetSelection()]
-        entry_type = item_type.bac_record.__fields__[self.entry.GetSelection()]
-        try:
-            find = int(self.find_ctrl.GetValue(), 0)
-            replace = int(self.replace_ctrl.GetValue(), 0)
-        except ValueError:
-            self.status_bar.SetStatusText("Invalid Value")
-            return None
+        if not color_db.bcs:
+            self.status_bar.SetStatusText("BCS Not Loaded")
+            return
+        item_type, fields = FIND_ITEM_TYPES[self.items.GetSelection()]
+        entry_type = fields[self.entry.GetSelection()]
+        find = self.find_ctrl.GetValue()
+        replace = self.replace_ctrl.GetValue()
+        if "name" not in entry_type:
+            try:
+                find = int(self.find_ctrl.GetValue(), 0)
+                replace = int(self.replace_ctrl.GetValue(), 0)
+            except ValueError:
+                self.status_bar.SetStatusText("Invalid Value")
+                return
         count = 0
-        item = self.entry_list.GetFirstItem()
+        skipped = 0
+        skipped_entries = set()
+        item, _ = get_first_item(self.part_sets_list)
         while item.IsOk():
-            data = self.entry_list.GetItemData(item)
-            if type(data) == item_type and data[entry_type] == find:
-                data[entry_type] = replace
+            data = self.part_sets_list.GetItemData(item)
+            res = self.replace_item(data, item_type, entry_type, find, replace, skipped_entries)
+            if res == Replace.REPLACED:
                 count += 1
-            item = self.entry_list.GetNextItem(item)
+            elif res == Replace.SKIPPED:
+                skipped += 1
+            item = get_next_item(self.part_sets_list, item)
 
-        pub.sendMessage('on_select', _=None)
-        pub.sendMessage('reindex')
-        self.status_bar.SetStatusText(f'Replaced {count} entry(s)')
+        self.main_panel.pages["Part Sets"].on_select(None)
+        pub.sendMessage('reindex_part_sets')
+        msg = f'Replaced {count} entry(s) (skipped {skipped}). '
+        if skipped:
+            msg += "Check your part colors"
+        self.status_bar.SetStatusText(msg)
+
+        if item_type == ColorSelector and skipped_entries:
+            if entry_type == "part_colors":
+                msg = "\n".join(f" * Color Selector ({cs[0]}, {cs[1]}) -> ({replace}, {cs[1]})"
+                                for cs in sorted(skipped_entries))
+            else:
+                msg = "\n".join(f" * Color Selector ({cs[0]}, {cs[1]}) -> ({cs[0]}, {replace})"
+                                for cs in sorted(skipped_entries))
+            with MultiMessageDialog(self, f"The following Color Selectors were skipped.\n"
+                                          f"Please check your part colors.", "Warning", msg, wx.OK) as dlg:
+                dlg.ShowModal()
+
+    @staticmethod
+    def get_color_selector_indexes(data, entry_type, replace):
+        if entry_type == "part_colors":
+            part_colors_index = replace
+            color_index = data.color
+        else:
+            part_colors_index = data.part_colors
+            color_index = replace
+        return part_colors_index, color_index
+
+    def replace_item(self, data, item_type, entry_type, find, replace, skipped=None):
+        if type(data) == item_type:
+            if item_type == ColorSelector and data[entry_type] == find:
+                part_colors_index, color_index = self.get_color_selector_indexes(data, entry_type, replace)
+                try:
+                    value = color_db[part_colors_index][color_index]
+                    data[entry_type] = replace
+                except IndexError:
+                    if skipped is not None:
+                        skipped.add((data.part_colors, data.color))
+                    return Replace.SKIPPED
+            else:
+                if isinstance(find, int) and data[entry_type] == find:
+                    data[entry_type] = replace
+                    return Replace.REPLACED
+                elif isinstance(find, str) and find in data[entry_type]:
+                    data[entry_type] = data[entry_type].replace(find, replace)
+                    return Replace.REPLACED
+        return Replace.NOT_REPLACED
