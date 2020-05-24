@@ -1,4 +1,3 @@
-from collections import defaultdict
 from functools import partial
 from itertools import chain
 import pickle
@@ -135,8 +134,6 @@ class ListPanel(wx.Panel):
             self.get_paste_data()
         if not self.paste_data:
             return
-
-        # Get item type of paste data
 
         # Cut length to match copied
         paste_length = len(self.paste_data)
