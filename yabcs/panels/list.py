@@ -47,8 +47,10 @@ class ListPanel(wx.Panel):
         self.Bind(wx.EVT_MENU, self.on_delete, id=wx.ID_DELETE)
         self.Bind(wx.EVT_MENU, self.on_copy, id=wx.ID_COPY)
         self.Bind(wx.EVT_MENU, self.on_paste, id=wx.ID_PASTE)
+        self.Bind(wx.EVT_MENU, self.on_select_all, id=wx.ID_SELECTALL)
 
         accelerator_table = wx.AcceleratorTable([
+            (wx.ACCEL_CTRL, ord('a'), wx.ID_SELECTALL),
             (wx.ACCEL_CTRL, ord('c'), wx.ID_COPY),
             (wx.ACCEL_CTRL, ord('v'), wx.ID_PASTE),
             (wx.ACCEL_NORMAL, wx.WXK_DELETE, wx.ID_DELETE),
@@ -70,6 +72,10 @@ class ListPanel(wx.Panel):
 
     def on_save(self, _):
         pub.sendMessage('save_bcs', e=None)
+
+    def on_select_all(self, _):
+        root = self.entry_list.GetRootItem()
+        self.entry_list.SelectChildren(root)
 
     def get_item_type_of_item_list(self, selections):
         if not selections:
@@ -119,13 +125,14 @@ class ListPanel(wx.Panel):
         self.paste_data_actual_type = type(self.paste_data[0])
         self.paste_data_type = type(self.paste_data[0][0]) if self.paste_data_actual_type == list else type(self.paste_data[0])
 
-    def on_paste(self, _):
+    def on_paste(self, _, use_existing=False):
         # Get Selected
         selected = self.get_selected_root_nodes()
         if not selected:
             return
 
-        self.get_paste_data()
+        if not use_existing:
+            self.get_paste_data()
         if not self.paste_data:
             return
 
@@ -257,7 +264,7 @@ class ListPanel(wx.Panel):
             elif isinstance(data, PartColor):
                 conflicts = self.check_color_conflicts(index)
                 if conflicts:
-                    msg = "\n".join([f"* Part Set {c[0]}, {c[1]}\n" for c in conflicts])
+                    msg = "\n".join([f"* Part Set {c[0]}, {c[1]}" for c in conflicts])
                     with MultiMessageDialog(self, f"Cannot delete Part Color {index}."
                                             "The following parts are still using it:",
                                             "Warning", msg, wx.OK) as dlg:
@@ -416,7 +423,7 @@ class ListPanel(wx.Panel):
             pub.sendMessage("set_status_bar", text=f"Added {label} successfully")
 
         if paste:
-            self.on_paste(None)
+            self.on_paste(None, use_existing=True)
         return new_items, new_types
 
     def add_part(self, _, part_name, entry=None):
@@ -537,7 +544,7 @@ class ListPanel(wx.Panel):
             pub.sendMessage("set_status_bar", text=f"Added {label} successfully")
 
         if paste:
-            self.on_paste(None)
+            self.on_paste(None, use_existing=True)
         return new_items, new_types
 
     def add_color_selector(self, _, append=True, entry=None, skip_reindex=False, paste=False):
@@ -547,8 +554,13 @@ class ListPanel(wx.Panel):
         return self.add_parts_item(append, entry, Physics, skip_reindex, paste)
 
     def add_parts_item(self, append, entry, item_type, skip_reindex, paste):
+        if paste and self.paste_data_actual_type == list and len(self.paste_data) > 1:
+            with wx.MessageDialog(self, f"Can only add copies of 1 {item_type} list at a time", "Error") as dlg:
+                dlg.ShowModal()
+            return
         name = item_type.get_func_name()
         label = item_type.get_readable_name()
+
         if not name.endswith('s'):
             name += "s"
         if not label.endswith('s'):
@@ -595,6 +607,8 @@ class ListPanel(wx.Panel):
 
         num_entries = 1
         if paste:
+            self.paste_data = self.paste_data[0]
+            self.paste_data_actual_type = self.paste_data_type
             num_entries = len(self.paste_data)
 
         new_items = []
@@ -626,7 +640,7 @@ class ListPanel(wx.Panel):
             pub.sendMessage("reindex_part_sets")
             pub.sendMessage("set_status_bar", text=f"Added {label} successfully")
         if paste:
-            self.on_paste(None)
+            self.on_paste(None, use_existing=True)
         return new_items, new_types
 
     def on_select(self, _):
