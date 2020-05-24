@@ -185,12 +185,12 @@ class ListPanel(wx.Panel):
             # Delete children and add new ones
             self.entry_list.DeleteChildren(item)
             if item_type == PartSet:
-                pub.sendMessage('load_parts', root=item, part_set=data)
+                pub.sendMessage('load_parts', root=item, part_set=data, single=True)
             elif item_type == Part:
-                pub.sendMessage('load_color_selectors', root=item, part=data)
+                pub.sendMessage('load_color_selectors', root=item, part=data, single=True)
                 pub.sendMessage('load_physics', root=item, part=data)
             elif actual_type == list and item_type == ColorSelector:
-                pub.sendMessage('load_color_selectors', root=None, part=part, color_selector_entry=item)
+                pub.sendMessage('load_color_selectors', root=None, part=part, color_selector_entry=item, single=True)
             elif actual_type == list and item_type == Physics:
                 pub.sendMessage('load_physics', root=None, part=part, physics_entry=item)
             elif item_type == PartColor:
@@ -205,34 +205,6 @@ class ListPanel(wx.Panel):
 
         # Reindex
         pub.sendMessage(self.reindex_name)
-
-        # Reload selected data if applicable
-
-        # data = self.entry_list.GetItemData(item)
-        # text = self.entry_list.GetItemText(item)
-
-        # # Add it to BCS first
-        # if isinstance(paste_data, list):
-        #     if isinstance(paste_data[0], Physics) and (isinstance(data, Part) or text == "Physics"):
-        #         if not data:
-        #             parent =
-
-        #     elif isinstance(paste_data[0], ColorSelector) and (isinstance(data, Part) or text == "Color Selectors"):
-        #         pass
-        #     else:
-        #         with wx.MessageDialog(self, f"Unable to paste '{paste_data[0].get_readable_name()}' list "
-        #                               f"onto '{text}'") as dlg:
-        #             dlg.ShowModal()
-        #     return
-        # elif type(paste_data) == type(data):
-        #     data.paste(paste_data)
-        # else:
-        #     with wx.MessageDialog(self, f"Unable to paste '{paste_data.get_readable_name()}' type "
-        #                           f"onto '{text}'") as dlg:
-        #         dlg.ShowModal()
-        #     return
-
-        # Now add it to the tree list
 
     def on_delete(self, _):
         items_to_delete = self.get_selected_root_nodes()

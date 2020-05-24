@@ -7,6 +7,7 @@ from pubsub import pub
 import wx
 from wx.lib.dialogs import ScrolledMessageDialog
 from wx.lib.agw.hyperlink import HyperLinkCtrl
+from wx.lib.dialogs import MultiMessageDialog
 
 from pyxenoverse.bcs import BCS
 from pyxenoverse.bcs.part_set import PartSet, BCS_PART_LIST
@@ -157,8 +158,8 @@ class MainWindow(wx.Frame):
         self.part_color_list.SetImageList(color_db.image_list)
 
         # Dialogs
-        # self.find = FindDialog(self, self.entry_list, -1)
-        # self.replace = ReplaceDialog(self, self.entry_list, -1)
+        # self.find = FindDialog(self, -1)
+        # self.replace = ReplaceDialog(self, -1)
 
         sizer.Layout()
         self.Show()
@@ -233,34 +234,57 @@ class MainWindow(wx.Frame):
         self.main_panel.Layout()
         self.statusbar.SetStatusText(f"Loaded {path}")
 
+    def show_invalid_colors(self, invalid_colors):
+        if not invalid_colors:
+            return
+        msg = "\n".join(f" * Part Color ({c.part_colors}, {c.color})"
+                        for c in sorted(invalid_colors, key=lambda x: (x.part_colors, x.color)))
+        with MultiMessageDialog(self, 'Some color selectors were not added because they referenced invalid Part Colors',
+                                'Warning', msg, wx.OK) as dlg:
+            dlg.ShowModal()
+
     def load_part_sets(self):
         self.part_set_list.DeleteAllItems()
         self.part_set_list.AddRoot("Parts")
+        invalid_colors = set()
         for i, part_set in enumerate(self.bcs.part_sets):
             part_set_entry = self.part_set_list.AppendItem(
                 self.part_set_list.GetRootItem(), f"{i}: Part Set", data=part_set)
-            self.load_parts(part_set_entry, part_set)
+            invalid_colors.update(self.load_parts(part_set_entry, part_set))
+        self.show_invalid_colors(invalid_colors)
 
-    def load_parts(self, root, part_set):
+    def load_parts(self, root, part_set, single=False):
+        invalid_colors = set()
         for i, part_name in enumerate(BCS_PART_LIST):
             if not part_set or part_name not in part_set.parts:
                 continue
             part = part_set.parts[part_name]
             part_entry = self.part_set_list.AppendItem(root, f"{i}: {part_name.replace('_', ' ').title()}", data=part)
-            self.load_color_selectors(part_entry, part)
+            invalid_colors.update(self.load_color_selectors(part_entry, part))
             self.load_physics(part_entry, part)
+        if single:
+            self.show_invalid_colors(invalid_colors)
+        return invalid_colors
 
-    def load_color_selectors(self, root, part, color_selector_entry=None):
+    def load_color_selectors(self, root, part, color_selector_entry=None, single=False):
         if not part.color_selectors:
-            return
-        if not color_selector_entry:
-            color_selector_entry = self.part_set_list.AppendItem(root, "Color Selectors", data=part.color_selectors)
+            return []
+        invalid_colors = set()
         for i, color_selector in enumerate(part.color_selectors):
-            name = self.bcs.part_colors[color_selector.part_colors].name
-            item = self.part_set_list.AppendItem(
-                color_selector_entry, f"{i}: {name}, {color_selector.color}", data=color_selector)
-            image = color_db[color_selector.part_colors][color_selector.color]
-            self.part_set_list.SetItemImage(item, image)
+            try:
+                name = self.bcs.part_colors[color_selector.part_colors].name
+                image = color_db[color_selector.part_colors][color_selector.color]
+                if not color_selector_entry:
+                    color_selector_entry = self.part_set_list.AppendItem(root, "Color Selectors",
+                                                                         data=part.color_selectors)
+                item = self.part_set_list.AppendItem(
+                    color_selector_entry, f"{i}: {name}, {color_selector.color}", data=color_selector)
+                self.part_set_list.SetItemImage(item, image)
+            except IndexError:
+                invalid_colors.add(color_selector)
+        if single:
+            self.show_invalid_colors(invalid_colors)
+        return invalid_colors
 
     def load_physics(self, root, part, physics_entry=None):
         if not part.physics:
