@@ -3,22 +3,34 @@ import re
 import wx
 
 from pubsub import pub
-from pyxenoverse.bac.sub_entry import ITEM_TYPES
+from pyxenoverse.bcs.part_set import PartSet
+from pyxenoverse.bcs.part import Part
+from pyxenoverse.bcs.color_selector import ColorSelector
+from pyxenoverse.bcs.physics import Physics
+from pyxenoverse.gui import get_first_item, get_next_item
 from pyxenoverse.gui.ctrl.hex_ctrl import HexCtrl
 from pyxenoverse.gui.ctrl.multiple_selection_box import MultipleSelectionBox
 from pyxenoverse.gui.ctrl.single_selection_box import SingleSelectionBox
 from pyxenoverse.gui.ctrl.unknown_hex_ctrl import UnknownHexCtrl
 
+from yabcs.colordb import color_db
+
 pattern = re.compile(r'([ \n/_])([a-z0-9]+)')
 
+ITEM_TYPES = [
+    (Part, ['name', "model", "model2", "texture", "emd_name", "emm_name", "ean_name", "dyt_options", "part_hiding"]),
+    (Physics, ['name', "texture", "emd_name", "emm_name", "esk_name", "bone_name", "scd_name", "dyt_options", "part_hiding"]),
+    (ColorSelector, ['part_colors', 'color']),
+]
 
 class FindDialog(wx.Dialog):
-    def __init__(self, parent, entry_list, *args, **kw):
+    def __init__(self, parent, main_panel, *args, **kw):
         super().__init__(parent, *args, **kw, style=wx.DEFAULT_DIALOG_STYLE | wx.STAY_ON_TOP)
         self.root = parent
-        self.entry_list = entry_list
+        self.main_panel = main_panel
+        self.part_sets_list = self.main_panel.pages["Part Sets"].entry_list
+
         self.SetTitle("Find")
-        # self.all_types = '--All Types--'
         self.selected = None
         self.focused = None
 
@@ -27,7 +39,7 @@ class FindDialog(wx.Dialog):
         self.hsizer = wx.BoxSizer()
         self.sizer.Add(self.hsizer)
 
-        self.items = wx.Choice(self, -1, choices=[item.__name__ for item in ITEM_TYPES.values()])  # + [self.all_types])
+        self.items = wx.Choice(self, -1, choices=[item[0].get_readable_name() for item in ITEM_TYPES])
         self.items.Bind(wx.EVT_CHOICE, self.on_choice)
 
         self.entry = wx.Choice(self, -1)
@@ -68,15 +80,23 @@ class FindDialog(wx.Dialog):
         self.SetAutoLayout(0)
 
     def on_show(self, e):
-        if not e.IsShown():
+        if not e.IsShown() or self.main_panel.notebook.GetSelection() != 0:
             return
         try:
-            data = None
-            selected = self.entry_list.GetSelections()
-            if len(selected) == 1:
-                data = self.entry_list.GetItemData(selected[0])
-                self.items.SetSelection(data.type)
+            selected = self.part_sets_list.GetSelections()
+            item_types, fields = zip(*ITEM_TYPES)
+            # Only set value if one item is selected
+            if not len(selected) == 1:
+                return
+            data = self.part_sets_list.GetItemData(selected[0])
+            try:
+                item_index = item_types.index(type(data))
+                self.items.SetSelection(item_index)
                 self.on_choice(None)
+            except ValueError:
+                return
+
+            # Find control focus
             ctrl = self.FindFocus()
             if type(ctrl.GetParent()) in (wx.SpinCtrlDouble, UnknownHexCtrl, SingleSelectionBox, MultipleSelectionBox):
                 ctrl = ctrl.GetParent()
@@ -84,12 +104,14 @@ class FindDialog(wx.Dialog):
                 ctrl = ctrl.GetParent().GetParent()
             name = pattern.sub(r'_\2', ctrl.GetName().lower())
             try:
-                if data:
-                    self.entry.SetSelection(data.__fields__.index(name))
+                if data and not isinstance(data, list):
+                    self.entry.SetSelection(fields[item_index].index(name))
+
+                # Set hex value if needed
                 if type(ctrl) in (HexCtrl, UnknownHexCtrl, SingleSelectionBox, MultipleSelectionBox):
                     self.find_ctrl.SetValue(f'0x{ctrl.GetValue():X}')
                 else:
-                    self.find_ctrl.SetValue(str(ctrl.GetValue()))
+                    self.find_ctrl.SetValue(str(ctrl.GetValue()).split(":")[0])
             except ValueError:
                 pass
         except AttributeError:
@@ -99,16 +121,26 @@ class FindDialog(wx.Dialog):
         self.entry.Clear()
         selection = self.items.GetSelection()
         if selection < len(ITEM_TYPES):
-            item_type = ITEM_TYPES[self.items.GetSelection()]
-            for attr in item_type.bac_record.__fields__:
+            item_type, attrs = ITEM_TYPES[self.items.GetSelection()]
+            for attr in attrs:
                 self.entry.Append(attr)
-        # self.entry.Append(self.all_types)
         self.entry.Select(0)
 
     def select_found(self, item, entry_type):
-        self.entry_list.UnselectAll()
-        self.entry_list.Select(item)
-        pub.sendMessage('on_select', _=None)
+        # Set page if not on correct page
+        if self.main_panel.notebook.GetSelection() != 0:
+            self.main_panel.notebook.SetSelection(0)
+
+        # Select found item
+        self.part_sets_list.UnselectAll()
+        self.part_sets_list.SelectItem(item)
+
+        # Expand item and scroll to it
+        self.main_panel.pages["Part Sets"].expand_parents(item)
+        if not self.part_sets_list.IsVisible(item):
+            self.part_sets_list.ScrollTo(item)
+
+        # Focus on entry
         pub.sendMessage('focus_on', entry=entry_type)
         self.SetFocus()
         self.status_bar.SetStatusText('')
@@ -117,64 +149,50 @@ class FindDialog(wx.Dialog):
         if not selected.IsOk():
             self.status_bar.SetStatusText('No matches found')
             return
-        item = self.entry_list.GetNextItem(selected)
+        # Get next item
+        item = get_next_item(self.part_sets_list, selected)
+        if not item.IsOk():
+            item, _ = get_first_item(self.part_sets_list)
+
+        # Loop over
         while item != selected:
-            data = self.entry_list.GetItemData(item)
-            # if item_type is None and type(data) in ITEM_TYPES and entry_type is None:
-            #     for field in data.__fields__:
-            #         if data[field] == find:
-            #             break
-            #     else:
-            #         continue
-            #     self.select_found(item, field)
-            #     break
-            # elif type(data) == item_type and entry_type is None:
-            #     for field in data.__fields__:
-            #         if data[field] == find:
-            #             break
-            #     else:
-            #         continue
-            #     self.select_found(item, field)
-            #     break
-            if type(data) == item_type and (find is None or data[entry_type] == find):
+            data = self.part_sets_list.GetItemData(item)
+            if (type(data) == item_type and
+                    (find is None or
+                     (not isinstance(find, str) and data[entry_type] == find) or
+                     (isinstance(find, str) and find.lower() in data[entry_type].lower()))):
                 self.select_found(item, entry_type)
                 break
 
-            item = self.entry_list.GetNextItem(item)
+            item = get_next_item(self.part_sets_list, item)
             if not item.IsOk():
-                item = self.entry_list.GetFirstItem()
+                item, _ = get_first_item(self.part_sets_list)
         else:
             self.status_bar.SetStatusText('No matches found')
 
     def on_find(self, _):
+        if not color_db.bcs:
+            self.status_bar.SetStatusText("BCS not loaded")
+            return
         # Get Item Type
         selection = self.items.GetSelection()
-        item_type = ITEM_TYPES[selection] if selection < len(ITEM_TYPES) else None
+        item_type, fields = ITEM_TYPES[selection]
 
         # Get Entry Type
-        if item_type:
-            bac_record = item_type.bac_record
-            selection = self.entry.GetSelection()
-            entry_type = bac_record.__fields__[selection] if selection < len(bac_record.__fields__) else None
-        else:
-            entry_type = None
+        selection = self.entry.GetSelection()
+        entry_type = fields[selection]
 
         # Get Find value
-        value = self.find_ctrl.GetValue()
-        if value:
+        find = self.find_ctrl.GetValue()
+        if "name" not in entry_type:
             try:
-                find = int(value, 0)
+                find = int(find, 0)
             except ValueError:
                 self.status_bar.SetStatusText("Invalid Value")
                 return
-        else:
-            if item_type is None or entry_type is None:
-                self.status_bar.SetStatusText("Need a value to search for")
-                return
-            find = None
-        selected = self.entry_list.GetSelections()
+        selected = self.part_sets_list.GetSelections()
         if len(selected) == 1:
             selected = selected[0]
         else:
-            selected = self.entry_list.GetFirstItem()
+            selected, _ = get_first_item(self.part_sets_list)
         self.find(selected, item_type, entry_type, find)

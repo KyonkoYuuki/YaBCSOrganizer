@@ -6,14 +6,14 @@ class PhysicsPanel(BasePanel):
         BasePanel.__init__(self, *args)
 
         self.controls['name'] = self.add_text_entry(self.entry_page, 'Name', maxlen=3)
-        self.controls['texture'] = self.add_num_entry(self.entry_page, 'DYT Texture Index')
+        self.controls['texture'] = self.add_num_entry(self.entry_page, 'Texture')
 
-        self.controls['emd_name'] = self.add_text_entry(self.entry_page, 'EMD')
-        self.controls['emm_name'] = self.add_text_entry(self.entry_page, 'EMM')
-        self.controls['emb_name'] = self.add_text_entry(self.entry_page, 'EMB')
-        self.controls['esk_name'] = self.add_text_entry(self.entry_page, 'ESK')
-        self.controls['bone_name'] = self.add_text_entry(self.entry_page, 'Bone')
-        self.controls['scd_name'] = self.add_text_entry(self.entry_page, 'SCD')
+        self.controls['emd_name'] = self.add_text_entry(self.entry_page, 'EMD Name')
+        self.controls['emm_name'] = self.add_text_entry(self.entry_page, 'EMM Name')
+        self.controls['emb_name'] = self.add_text_entry(self.entry_page, 'EMB Name')
+        self.controls['esk_name'] = self.add_text_entry(self.entry_page, 'ESK Name')
+        self.controls['bone_name'] = self.add_text_entry(self.entry_page, 'Bone Name')
+        self.controls['scd_name'] = self.add_text_entry(self.entry_page, 'SCD Name')
         self.controls['dyt_options'] = self.add_single_selection_entry(self.entry_page, 'DYT Options', majorDimension=3, choices={
             'Standard': 0x0,
             'Part DYT': 0x1,

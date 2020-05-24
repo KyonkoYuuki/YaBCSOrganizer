@@ -15,7 +15,7 @@ class ColorSelectorPanel(BasePanel):
 
         self.controls['part_colors'] = self.add_combo_box(self.entry_page, 'Part Colors')
         self.controls['part_colors'].Bind(wx.EVT_TEXT, self.skip_evt_text)
-        self.controls['color'] = self.add_bitmap_combo_box(self.entry_page, 'Model2')
+        self.controls['color'] = self.add_bitmap_combo_box(self.entry_page, 'Color')
         self.controls['color'].Bind(wx.EVT_TEXT, self.skip_evt_text)
 
     @add_entry

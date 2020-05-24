@@ -23,8 +23,9 @@ from pyxenoverse.bcs.bone import Bone
 from yabcs.colordb import color_db
 from yabcs.panels.main import MainPanel
 from yabcs.panels.side import SidePanel
-# from yabcs.dlg.find import FindDialog
+from yabcs.dlg.find import FindDialog
 # from yabcs.dlg.replace import ReplaceDialog
+from pyxenoverse.gui import get_next_item
 from pyxenoverse.gui.file_drop_target import FileDropTarget
 
 VERSION = '0.1.0'
@@ -87,7 +88,7 @@ class MainWindow(wx.Frame):
         # Events.
         self.Bind(wx.EVT_MENU, self.open_bcs, id=wx.ID_OPEN)
         self.Bind(wx.EVT_MENU, self.save_bcs, id=wx.ID_SAVE)
-        # self.Bind(wx.EVT_MENU, self.on_find, id=wx.ID_FIND)
+        self.Bind(wx.EVT_MENU, self.on_find, id=wx.ID_FIND)
         # self.Bind(wx.EVT_MENU, self.on_replace, id=wx.ID_REPLACE)
         self.Bind(wx.EVT_MENU, self.on_about, id=wx.ID_ABOUT)
         self.Bind(wx.EVT_MENU, self.on_exit, id=wx.ID_EXIT)
@@ -100,7 +101,7 @@ class MainWindow(wx.Frame):
         accelerator_table = wx.AcceleratorTable([
             (wx.ACCEL_CTRL, ord('o'), wx.ID_OPEN),
             (wx.ACCEL_CTRL, ord('s'), wx.ID_SAVE),
-            # (wx.ACCEL_CTRL, ord('f'), wx.ID_FIND),
+            (wx.ACCEL_CTRL, ord('f'), wx.ID_FIND),
             # (wx.ACCEL_CTRL, ord('h'), wx.ID_REPLACE),
         ])
         self.SetAcceleratorTable(accelerator_table)
@@ -158,7 +159,7 @@ class MainWindow(wx.Frame):
         self.part_color_list.SetImageList(color_db.image_list)
 
         # Dialogs
-        # self.find = FindDialog(self, -1)
+        self.find = FindDialog(self, self.main_panel)
         # self.replace = ReplaceDialog(self, -1)
 
         sizer.Layout()
@@ -171,23 +172,6 @@ class MainWindow(wx.Frame):
         dlg = ScrolledMessageDialog(self, ''.join(traceback.format_exception(etype, value, trace)), "Error")
         dlg.ShowModal()
         dlg.Destroy()
-
-    def get_parent(self, list_ctrl, item):
-        parent = list_ctrl.GetItemParent(item)
-        if parent == list_ctrl.GetRootItem():
-            return None
-        next_item = list_ctrl.GetNextSibling(parent)
-        if not next_item.IsOk():
-            next_item = self.get_parent(list_ctrl, parent)
-        return next_item
-
-    def get_next_item(self, list_ctrl, item):
-        next_item = list_ctrl.GetFirstChild(item)[0]
-        if not next_item.IsOk():
-            next_item = list_ctrl.GetNextSibling(item)
-        if not next_item.IsOk():
-            next_item = self.get_parent(list_ctrl, item)
-        return next_item
 
     def on_about(self, _):
         # Create a message dialog box
@@ -403,7 +387,7 @@ class MainWindow(wx.Frame):
             elif item != root and num_children == 0:
                 self.part_set_list.Delete(item)
 
-            item = self.get_next_item(self.part_set_list, item)
+            item = get_next_item(self.part_set_list, item)
 
     def reindex_part_colors(self, selected=None):
         if not self.bcs:
@@ -430,7 +414,7 @@ class MainWindow(wx.Frame):
                 color_db.image_list.Replace(image_index, bitmap)
                 self.part_color_list.SetItemText(item, f"{color_index}")
                 color_index += 1
-            item = self.get_next_item(self.part_color_list, item)
+            item = get_next_item(self.part_color_list, item)
 
     def reindex_bodies(self, selected=None):
         if not self.bcs:
@@ -449,7 +433,7 @@ class MainWindow(wx.Frame):
             elif isinstance(data, BoneScale):
                 self.body_list.SetItemText(item, f"{bone_scale_index}: {data.name}")
                 bone_scale_index += 1
-            item = self.get_next_item(self.body_list, item)
+            item = get_next_item(self.body_list, item)
 
     def reindex_skeletons(self, selected=None):
         if not self.bcs:
@@ -468,7 +452,7 @@ class MainWindow(wx.Frame):
             elif isinstance(data, Bone):
                 self.skeleton_list.SetItemText(item, f"{bone_index}: {data.name}")
                 bone_index += 1
-            item = self.get_next_item(self.skeleton_list, item)
+            item = get_next_item(self.skeleton_list, item)
 
     def on_add(self, _):
         text = self.add_button.GetLabelText()
@@ -485,9 +469,9 @@ class MainWindow(wx.Frame):
     def change_add_text(self, text):
         self.add_button.SetLabelText(f"Add {text}")
 
-    # def on_find(self, _):
-    #     if not self.replace.IsShown():
-    #         self.find.Show()
+    def on_find(self, _):
+        # if not self.replace.IsShown():
+        self.find.Show()
     #
     # def on_replace(self, _):
     #     if not self.find.IsShown():
