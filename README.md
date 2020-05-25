@@ -16,6 +16,6 @@ Features include:
 # Changelog
 ```
 0.1.0 - Initial Release
-0.1.1 - Now can load BCS files with invalid headers (Thanks DIMPS)
+0.1.1 - Now can load BCS files with invalid headers, fixed XML generation mislabeling Physics files as FILES instead of STR_28
 ```
 
