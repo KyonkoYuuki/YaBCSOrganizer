@@ -110,10 +110,10 @@ class MainWindow(wx.Frame):
         self.name.SetFont(font)
 
         # Buttons
-        open_button = wx.Button(self, wx.ID_OPEN, "Load")
+        open_button = wx.Button(self, wx.ID_OPEN, "Load", size=(80, -1))
         open_button.Bind(wx.EVT_BUTTON, self.open_bcs)
 
-        self.save_button = wx.Button(self, wx.ID_SAVE, "Save")
+        self.save_button = wx.Button(self, wx.ID_SAVE, "Save", size=(80, -1))
         self.save_button.Disable()
         self.save_button.Bind(wx.EVT_BUTTON, self.save_bcs)
 
@@ -121,13 +121,21 @@ class MainWindow(wx.Frame):
         self.add_button.Disable()
         self.add_button.Bind(wx.EVT_BUTTON, self.on_add)
 
-        self.add_copy_button = wx.Button(self, wx.ID_ADD, "Add Part Set Copy", size=(150, -1))
+        self.add_copy_button = wx.Button(self, wx.ID_ADD, "Add Part Set Copy", size=(120, -1))
         self.add_copy_button.Disable()
         self.add_copy_button.Bind(wx.EVT_BUTTON, partial(self.on_add, paste=True))
 
         hyperlink = HyperLinkCtrl(self, -1, "What do all these things mean?",
                                   URL="https://docs.google.com/document/d/"
                                       "1df8_Zs3g0YindDNees_CSrWVpMBtwWGrFf2FE8JruUk/edit?usp=sharing")
+
+        # Race/Gender
+        self.gender = wx.ComboBox(self, choices=["Male", "Female"], style=wx.CB_READONLY, size=(80, -1))
+        self.gender.Disable()
+
+        self.race = wx.ComboBox(self, choices=["Human", "Saiyan", "Namekian", "Frieza", "Majin", "Android (?)"],
+                                style=wx.CB_READONLY, size=(80, -1))
+        self.race.Disable()
 
         # Sizer
         sizer = wx.BoxSizer(wx.VERTICAL)
@@ -136,14 +144,19 @@ class MainWindow(wx.Frame):
         button_sizer.Add(self.save_button, 0, wx.LEFT, 10)
         button_sizer.Add(self.add_button, 0, wx.LEFT, 10)
         button_sizer.Add(self.add_copy_button, 0, wx.LEFT, 10)
-        button_sizer.Add(hyperlink, 0, wx.ALL, 10)
+        button_sizer.Add(hyperlink, 0, wx.LEFT | wx.BOTTOM, 10)
+
+        header_sizer = wx.BoxSizer()
+        header_sizer.Add(self.gender, 0, wx.LEFT, 10)
+        header_sizer.Add(self.race, 0, wx.LEFT, 10)
 
         panel_sizer = wx.BoxSizer()
         panel_sizer.Add(self.main_panel, 1, wx.ALL | wx.EXPAND)
         panel_sizer.Add(self.side_panel, 2, wx.ALL | wx.EXPAND)
 
         sizer.Add(self.name, 0, wx.CENTER)
-        sizer.Add(button_sizer, 0, wx.ALL, 10)
+        sizer.Add(button_sizer, 0, wx.ALL)
+        sizer.Add(header_sizer, 0, wx.TOP, 10)
         sizer.Add(panel_sizer, 1, wx.ALL | wx.EXPAND)
 
         self.SetBackgroundColour('white')
@@ -210,8 +223,12 @@ class MainWindow(wx.Frame):
         self.add_button.Enable()
         self.enable_add_copy()
         self.save_button.Enable()
+        self.gender.Enable()
+        self.race.Enable()
         pub.sendMessage('hide_panels')
 
+        self.gender.SetSelection(self.bcs.header.gender)
+        self.race.SetSelection(self.bcs.header.race)
         self.load_part_colors()  # Need to load this first
         self.load_part_sets()
         self.load_bodies()
@@ -348,7 +365,8 @@ class MainWindow(wx.Frame):
             self.dirname = dlg.GetDirectory()
             self.statusbar.SetStatusText("Saving...")
             path = os.path.join(self.dirname, filename)
-            # self.main_panel.reindex()
+            self.bcs.header.gender = self.gender.GetSelection()
+            self.bcs.header.race = self.race.GetSelection()
             self.bcs.save(path)
             self.statusbar.SetStatusText(f"Saved {path}")
             saved = wx.MessageDialog(self, f"Saved to {path} successfully", "BCS Saved")

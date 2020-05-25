@@ -3,6 +3,7 @@ from itertools import chain
 import pickle
 import wx
 from wx.lib.dialogs import MultiMessageDialog
+import pyperclip
 
 from pubsub import pub
 
@@ -688,6 +689,9 @@ class ListPanel(wx.Panel):
             self.add_menu_items(menu, PartSet)
             menu.AppendSeparator()
             self.add_menu_parts_items(menu, data)
+            menu.AppendSeparator()
+            xml = menu.Append(-1, "Generate part set xml")
+            self.Bind(wx.EVT_MENU, partial(self.generate_xml, part_set=data), xml)
         elif isinstance(data, Part):
             part_set_item = self.entry_list.GetItemParent(selected)
             part_set = self.entry_list.GetItemData(part_set_item)
@@ -749,3 +753,9 @@ class ListPanel(wx.Panel):
 
     def clear_focus(self):
         self.focus = None
+
+    def generate_xml(self, _, part_set):
+        xml = part_set.generate_xml(color_db.bcs.part_colors)
+        pyperclip.copy(xml)
+        with MultiMessageDialog(self, "The generated XML has been copied to the clipboard", "Info", xml, wx.OK) as dlg:
+            dlg.ShowModal()
