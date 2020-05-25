@@ -5,7 +5,6 @@ This is not a guide on what each entry means.  This is just a tool to make editi
 
 Features include:
 * Copying/Pasting/Adding/Deleting entries
-* Smart pasting for items like EAN Indexes that are not the same between two movesets/skills
 * Find/Replace entries by value
 * Shared clipboard between different instances of the BCS organizer
 * Generate XML for copying into the XV2 Costume Creator
