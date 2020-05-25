@@ -16,5 +16,6 @@ Features include:
 # Changelog
 ```
 0.1.0 - Initial Release
+0.1.1 - Now can load BCS files with invalid headers (Thanks DIMPS)
 ```
 
