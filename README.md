@@ -1,7 +1,7 @@
 # YaBCSOrganizer
 This tool helps with editing BCS files for Xenoverse 2, which are responsible for various actions in a moveset and skill, such as animations, hitboxes, effects, sound, and more. 
 
-This is not a guide on what each entry means.  This is just a tool to make editing them easier.  For a more comprehensive guide to that, please refer to the [BCS Manual](https://docs.google.com/document/d/18gaAbNCeJyTgizz5IvvXzjWcH9K5Q1wvUHTeWnp8M-E/edit#heading=h.v77lp7pp65pd)
+This is not a guide on what each entry means.  This is just a tool to make editing them easier.  For a more comprehensive guide to that, please refer to the [BCS Manual](https://docs.google.com/document/d/1df8_Zs3g0YindDNees_CSrWVpMBtwWGrFf2FE8JruUk)
 
 Features include:
 * Copying/Pasting/Adding/Deleting entries
