@@ -16,7 +16,7 @@ class PartPanel(BasePanel):
         self.controls['ean_name'] = self.add_text_entry(self.entry_page, 'EAN Name')
         self.controls['dyt_options'] = self.add_unknown_hex_entry(self.entry_page, 'DYT Options', showKnown=True, cols=4, knownValues={
             0x0: 'Standard',
-            0x2: 'Model 2 EMB.DYT',
+            0x2: 'Model 2 DYT',
             0x4: 'Accessories',
             0xc: 'Green Scouter Overlay',
             0x14: 'Red Scouter Overlay',
