@@ -17,5 +17,6 @@ Features include:
 ```
 0.1.0 - Initial Release
 0.1.1 - Now can load BCS files with invalid headers, fixed XML generation mislabeling Physics files as FILES instead of STR_28
+0.1.2 - Fixed part hiding to also allow unknown values
 ```
 
