@@ -6,7 +6,7 @@ import time
 from wx.lib.scrolledpanel import ScrolledPanel
 
 from pyxenoverse.gui import add_entry, EVT_RESULT, EditThread
-from pyxenoverse.gui.ctrl.colour_picker_ctrl import ColourPickerCtrl
+from pyxenoverse.gui.ctrl.colour_picker_alpha_ctrl import ColourPickerAlphaCtrl
 from pyxenoverse.gui.ctrl.hex_ctrl import HexCtrl
 from pyxenoverse.gui.ctrl.multiple_selection_box import MultipleSelectionBox
 from pyxenoverse.gui.ctrl.single_selection_box import SingleSelectionBox
@@ -97,7 +97,7 @@ class BasePanel(wx.Panel):
 
     @add_entry
     def add_color_picker(self, panel, _, *args, **kwargs):
-        return ColourPickerCtrl(panel, *args, **kwargs)
+        return ColourPickerAlphaCtrl(panel, *args, **kwargs)
 
     def add_nameable_float_entry(self, panel, *args, **kwargs):
         label = wx.StaticText(panel, -1, '')
