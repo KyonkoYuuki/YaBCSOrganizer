@@ -5,44 +5,13 @@ from threading import Thread
 import time
 from wx.lib.scrolledpanel import ScrolledPanel
 
-from pyxenoverse.gui import add_entry
+from pyxenoverse.gui import add_entry, EVT_RESULT, EditThread
 from pyxenoverse.gui.ctrl.colour_picker_ctrl import ColourPickerCtrl
 from pyxenoverse.gui.ctrl.hex_ctrl import HexCtrl
 from pyxenoverse.gui.ctrl.multiple_selection_box import MultipleSelectionBox
 from pyxenoverse.gui.ctrl.single_selection_box import SingleSelectionBox
 from pyxenoverse.gui.ctrl.text_ctrl import TextCtrl
 from pyxenoverse.gui.ctrl.unknown_hex_ctrl import UnknownHexCtrl
-
-
-EVT_RESULT_ID = wx.NewId()
-
-
-def EVT_RESULT(win, func):
-    win.Connect(-1, -1, EVT_RESULT_ID, func)
-
-
-class ResultEvent(wx.PyEvent):
-    def __init__(self):
-        wx.PyEvent.__init__(self)
-        self.SetEventType(EVT_RESULT_ID)
-
-
-class EditThread(Thread):
-    def __init__(self, panel):
-        Thread.__init__(self)
-        self.count = 0
-        self.panel = panel
-        self.start()
-
-    def run(self):
-        while self.count < 0.5:
-            time.sleep(0.1)
-            self.count += 0.1
-
-        wx.PostEvent(self.panel, ResultEvent())
-
-    def new_sig(self):
-        self.count = 0
 
 
 class Page(ScrolledPanel):
