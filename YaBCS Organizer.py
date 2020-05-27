@@ -249,6 +249,7 @@ class MainWindow(wx.Frame):
 
     def load_part_sets(self):
         self.part_set_list.DeleteAllItems()
+        self.part_set_list.Refresh()
         self.part_set_list.AddRoot("Parts")
         invalid_colors = set()
         for i, part_set in enumerate(self.bcs.part_sets):
@@ -300,6 +301,7 @@ class MainWindow(wx.Frame):
 
     def load_part_colors(self):
         self.part_color_list.DeleteAllItems()
+        self.part_color_list.Refresh()
         self.part_color_list.AddRoot("Part Colors")
         color_db.clear()
         color_db.image_list.RemoveAll()
@@ -326,6 +328,7 @@ class MainWindow(wx.Frame):
 
     def load_bodies(self):
         self.body_list.DeleteAllItems()
+        self.body_list.Refresh()
         self.body_list.AddRoot("Bodies")
         for i, body in enumerate(self.bcs.bodies):
             body_entry = self.body_list.AppendItem(
@@ -340,6 +343,7 @@ class MainWindow(wx.Frame):
 
     def load_skeletons(self):
         self.skeleton_list.DeleteAllItems()
+        self.skeleton_list.Refresh()
         self.skeleton_list.AddRoot("Skeleton")
         for i, skeleton in enumerate(self.bcs.skeletons):
             skeleton_entry = self.skeleton_list.AppendItem(
