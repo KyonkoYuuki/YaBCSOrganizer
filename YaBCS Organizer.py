@@ -22,6 +22,7 @@ from pyxenoverse.bcs.color import Color
 from pyxenoverse.bcs.bone_scale import BoneScale
 from pyxenoverse.bcs.skeleton import Skeleton
 from pyxenoverse.bcs.bone import Bone
+from pyxenoverse.gui import create_backup
 from yabcs.utils import color_db
 from yabcs.panels.main import MainPanel
 from yabcs.panels.side import SidePanel
@@ -368,6 +369,7 @@ class MainWindow(wx.Frame):
             filename = dlg.GetFilename()
             self.dirname = dlg.GetDirectory()
             self.statusbar.SetStatusText("Saving...")
+            create_backup(self.dirname, filename)
             path = os.path.join(self.dirname, filename)
             self.bcs.header.gender = self.gender.GetSelection()
             self.bcs.header.race = self.race.GetSelection()
