@@ -31,7 +31,7 @@ from yabcs.dlg.replace import ReplaceDialog
 from pyxenoverse.gui import get_next_item
 from pyxenoverse.gui.file_drop_target import FileDropTarget
 
-VERSION = '0.1.2'
+VERSION = '0.1.4'
 
 
 class MainWindow(wx.Frame):
