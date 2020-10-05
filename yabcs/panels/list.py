@@ -464,7 +464,7 @@ class ListPanel(wx.Panel):
                 break
             part_item, cookie = self.entry_list.GetNextChild(part_set_item, cookie)
             tree_index += 1
-        new_item = self.entry_list.InsertItem(part_set_item, index, f"{index}: {name}", data=new_part)
+        new_item = self.entry_list.InsertItem(part_set_item, tree_index, f"{index}: {name}", data=new_part)
         self.select_items([new_item])
 
         # Reindex
@@ -604,7 +604,7 @@ class ListPanel(wx.Panel):
             index = len(part_attr_list)
 
         num_entries = 1
-        if paste:
+        if paste and self.paste_data_actual_type == list:
             self.paste_data = self.paste_data[0]
             self.paste_data_actual_type = self.paste_data_type
             num_entries = len(self.paste_data)
