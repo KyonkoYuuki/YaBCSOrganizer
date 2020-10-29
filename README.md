@@ -22,5 +22,6 @@ Features include:
 0.1.4 - Fixed bug saving BCS files with no skeleton data
 0.1.5 - Fixed bug when adding single Physics/Color Selectors.  Fixed bug adding new body parts.
 0.1.6 - Now supports unicode characters in names
+0.1.7 - Fixed part sets not saving correctly sometimes
 ```
 
