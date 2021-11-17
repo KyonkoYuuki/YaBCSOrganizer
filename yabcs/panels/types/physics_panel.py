@@ -11,7 +11,7 @@ class PhysicsPanel(BasePanel):
         self.controls['emd_name'] = self.add_text_entry(self.entry_page, 'EMD Name')
         self.controls['emm_name'] = self.add_text_entry(self.entry_page, 'EMM Name')
         self.controls['emb_name'] = self.add_text_entry(self.entry_page, 'EMB Name')
-        self.controls['esk_name'] = self.add_text_entry(self.entry_page, 'ESK Name')
+        self.controls['ean_name'] = self.add_text_entry(self.entry_page, 'EAN Name')
         self.controls['bone_name'] = self.add_text_entry(self.entry_page, 'Bone Name')
         self.controls['scd_name'] = self.add_text_entry(self.entry_page, 'SCD Name')
         self.controls['dyt_options'] = self.add_unknown_hex_entry(self.entry_page, 'DYT Options', showKnown=True, cols=3, knownValues={
